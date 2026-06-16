@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["config", "shared", "tests", "playwright.config.ts", "eslint.config.mjs"],
+  "exclude": ["node_modules", "reports", "perf"]
+}
