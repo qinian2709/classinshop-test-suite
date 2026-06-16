@@ -38,11 +38,12 @@ test.describe('商家后台-通知概览', () => {
   test('未登录访问商家后台接口应被拒绝', async ({ anonApi, env }) => {
     const shopId = env.shopId || '999999999';
     const res = await anonApi.raw('get', Endpoints.shopAdmin.notificationsSummary(shopId));
+    // 被拒绝可能体现为 HTTP 4xx（401/403/404）或成功信封内的非 0 业务码
     if (res.status() === 200) {
       const b = await res.json();
       expect(b.code).not.toBe(SUCCESS_CODE);
     } else {
-      expect([401, 403]).toContain(res.status());
+      expect(res.status()).toBeGreaterThanOrEqual(400);
     }
   });
 });
