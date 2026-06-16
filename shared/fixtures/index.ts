@@ -2,6 +2,18 @@ import { test as base, expect } from '@playwright/test';
 import { env, accounts, hasApiCredential } from '../../config/index.js';
 import { getAccessToken } from '../auth/login.js';
 import { DataRegistry } from '../data/cleanup.js';
+import {
+  pickGoods,
+  pickRefundableOrder,
+  pickAvailableCoupon,
+  pickAppointmentOrderItem,
+} from '../data/discovery.js';
+import type {
+  SampleGoods,
+  RefundableOrder,
+  AvailableCoupon,
+  AppointmentOrderItem,
+} from '../data/discovery.js';
 import { browserHeaders, authHeader } from '../http/browser-headers.js';
 import { ApiHelper } from './api-helper.js';
 
@@ -21,6 +33,14 @@ export interface ApiFixtures {
   api: ApiHelper;
   /** 测试数据登记表，结束后自动清理 */
   data: DataRegistry;
+  /** 依赖型 fixture：一个可用于算价/下单的真实商品（含 skuId）。无在售商品时自动跳过用例。 */
+  sampleGoods: SampleGoods;
+  /** 依赖型 fixture：一个可退款订单。无订单时自动跳过用例。 */
+  refundableOrder: RefundableOrder;
+  /** 依赖型 fixture：一张可领取优惠券（依赖店铺维度）。无可领券时自动跳过用例。 */
+  availableCoupon: AvailableCoupon;
+  /** 依赖型 fixture：一个可发起约课的订单项。无可约订单项时自动跳过用例。 */
+  appointmentOrderItem: AppointmentOrderItem;
 }
 
 function shopHeaders(): Record<string, string> {
@@ -77,6 +97,33 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     const registry = new DataRegistry();
     await use(registry);
     await registry.runAll();
+  },
+
+  sampleGoods: async ({ api }, use) => {
+    const goods = await pickGoods(api);
+    test.skip(!goods, '环境无可用在售商品（可配置 TEST_GOODS_ID/TEST_SKU_ID），跳过依赖商品的链路');
+    await use(goods as SampleGoods);
+  },
+
+  refundableOrder: async ({ api }, use) => {
+    const order = await pickRefundableOrder(api);
+    test.skip(!order, '环境无可退款订单（可配置 TEST_REFUND_ORDER_ID），跳过依赖订单的链路');
+    await use(order as RefundableOrder);
+  },
+
+  availableCoupon: async ({ api }, use) => {
+    const coupon = await pickAvailableCoupon(api);
+    test.skip(!coupon, '环境无可领取优惠券（需配置 SHOP_DOMAIN），跳过依赖优惠券的链路');
+    await use(coupon as AvailableCoupon);
+  },
+
+  appointmentOrderItem: async ({ api }, use) => {
+    const item = await pickAppointmentOrderItem(api);
+    test.skip(
+      !item,
+      '环境无可约课订单项（可配置 TEST_APPT_ORDER_ITEM_ID），跳过依赖约课订单的链路',
+    );
+    await use(item as AppointmentOrderItem);
   },
 });
 

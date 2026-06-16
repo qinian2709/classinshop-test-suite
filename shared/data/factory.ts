@@ -49,7 +49,7 @@ export function buildAddressPayload(overrides: Partial<AddressPayload> = {}): Ad
   };
 }
 
-/** 下单入参（对应 CreateGoodsOrder / CalculateOrderPrice 的常用字段）。 */
+/** 简化下单入参，仅用于「缺字段/非法值」等异常用例。正向链路请用下面的工厂。 */
 export interface OrderPayload {
   goodsId: number;
   num: number;
@@ -66,5 +66,67 @@ export function buildOrderPayload(
     goodsId,
     num: 1,
     ...overrides,
+  };
+}
+
+/** 算价商品项（对应 requests.CalculateOrderGoodsItem，goodsId/skuId/quantity 必填）。 */
+export interface CalculateGoodsItem {
+  goodsId: number;
+  skuId: number;
+  quantity: number;
+  price?: number;
+}
+
+/** 算价入参（对应 requests.CalculateOrderPriceRequest）。 */
+export interface CalculatePayload {
+  goods: CalculateGoodsItem[];
+  userCouponId?: number;
+  activityId?: number;
+  ruleId?: number;
+  [key: string]: unknown;
+}
+
+export interface BuildCalculateInput {
+  goodsId: number;
+  skuId: number;
+  quantity?: number;
+  userCouponId?: number;
+}
+
+export function buildCalculatePayload(input: BuildCalculateInput): CalculatePayload {
+  return {
+    goods: [{ goodsId: input.goodsId, skuId: input.skuId, quantity: input.quantity ?? 1 }],
+    ...(input.userCouponId ? { userCouponId: input.userCouponId } : {}),
+  };
+}
+
+/** 下单入参（对应 requests.CreateGoodsOrderRequest，goodsId/skuId 必填）。 */
+export interface CreateOrderPayload {
+  goodsId: number;
+  skuId: number;
+  quantity: number;
+  userCouponId?: number;
+  payChannel?: number;
+  deliveryRecord?: { addressId: number };
+  [key: string]: unknown;
+}
+
+export interface BuildCreateOrderInput {
+  goodsId: number;
+  skuId: number;
+  quantity?: number;
+  userCouponId?: number;
+  addressId?: number;
+  payChannel?: number;
+}
+
+export function buildCreateOrderPayload(input: BuildCreateOrderInput): CreateOrderPayload {
+  return {
+    goodsId: input.goodsId,
+    skuId: input.skuId,
+    quantity: input.quantity ?? 1,
+    payChannel: input.payChannel ?? 0,
+    ...(input.userCouponId ? { userCouponId: input.userCouponId } : {}),
+    ...(input.addressId ? { deliveryRecord: { addressId: input.addressId } } : {}),
   };
 }
