@@ -30,8 +30,16 @@ test.describe('用户中心', () => {
     expect(body.code).toBe(SUCCESS_CODE);
   });
 
-  test('GET /merchant/status 返回商户状态', async ({ api }) => {
+  test('GET /merchant/status 缺少 orgId 应返回参数错误', async ({ api }) => {
+    // GetMerchantStatus 要求 query.orgId，缺失/非法时返回 ErrBadRequest(400)
     const { body } = await api.get(Endpoints.merchant.status);
+    expect(body.code).not.toBe(SUCCESS_CODE);
+  });
+
+  test('GET /merchant/status?orgId=... 返回商户状态（配置 TEST_ORG_ID 时）', async ({ api }) => {
+    const orgId = process.env.TEST_ORG_ID;
+    test.skip(!orgId, '未配置 TEST_ORG_ID，跳过商户状态正向用例');
+    const { body } = await api.get(Endpoints.merchant.status, { query: { orgId } });
     expect(body.code).toBe(SUCCESS_CODE);
   });
 });

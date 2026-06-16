@@ -18,26 +18,32 @@ export function buildSignupPayload(overrides: Partial<SignupPayload> = {}): Sign
   };
 }
 
-/** 收货地址入参（对应 CreateUserAddress）。 */
+/** 收货地址入参（对应 requests.CreateUserAddressReq，字段均 required）。 */
 export interface AddressPayload {
-  name: string;
-  phone: string;
+  receiverName: string;
+  receiverPhone: string;
   province: string;
+  provinceCode: string;
   city: string;
+  cityCode: string;
   district: string;
-  detail: string;
+  districtCode: string;
+  detailAddress: string;
   isDefault?: boolean;
   [key: string]: unknown;
 }
 
 export function buildAddressPayload(overrides: Partial<AddressPayload> = {}): AddressPayload {
   return {
-    name: uniqueName('收货人'),
-    phone: randomPhone(),
+    receiverName: uniqueName('收货人'),
+    receiverPhone: randomPhone(),
     province: '北京市',
+    provinceCode: '110000',
     city: '北京市',
+    cityCode: '110100',
     district: '海淀区',
-    detail: `自动化测试地址 ${randomString(4)}`,
+    districtCode: '110108',
+    detailAddress: `自动化测试地址 ${randomString(4)}`,
     isDefault: false,
     ...overrides,
   };

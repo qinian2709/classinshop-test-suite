@@ -30,6 +30,16 @@ TEST_ENV=im pnpm test:e2e:web
 `dynamic-shop1x.eeo.im` 等为内网测试环境，通常需要在公司内网 / VPN 下访问，否则网关会返回 `403 Forbidden`。
 本地跑接口用例前，请确认 `curl https://dynamic-shop13.eeo.im/api/v1/system/info` 能拿到 JSON。
 
+### WAF 与并发限制（重要）
+
+被测环境前置 WAF 有两条限制，套件已做适配：
+
+1. 拦截"非浏览器"请求：接口请求会自动带上 `Origin` / `Referer` / `User-Agent` / `Accept` 等浏览器指纹头
+   （见 `shared/http/browser-headers.ts`，`Origin/Referer` 取 `SHOP_HOST`）。
+2. 拦截并发突发请求：接口用例**串行执行**（`test:api` 默认 `--workers=1`，api project `fullyParallel:false`）。
+
+若仍偶发 403，多为 IP 被临时封禁，等待 1-2 分钟后重试即可。
+
 ## 3. 鉴权（获取 JWT）
 
 需要登录的接口用例依赖一个 accessToken，两种提供方式（见 `config/accounts.ts`）：

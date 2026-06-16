@@ -52,4 +52,8 @@ export const Endpoints = {
   merchant: {
     status: '/merchant/status',
   },
+  // 商家后台（/shop/:shopId/*，需 JWT + 店铺成员 + GetShopByID）
+  shopAdmin: {
+    notificationsSummary: (shopId: string | number) => `/shop/${shopId}/notifications/summary`,
+  },
 } as const;

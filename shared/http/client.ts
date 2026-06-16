@@ -1,5 +1,6 @@
 import { env } from '../../config/index.js';
 import { createLogger } from '../utils/logger.js';
+import { browserHeaders } from './browser-headers.js';
 import type { ApiResponse } from './types.js';
 import { SUCCESS_CODE } from './types.js';
 
@@ -59,12 +60,14 @@ export class ApiClient {
   private buildHeaders(opts: RequestOptions): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...browserHeaders(),
       ...this.defaultHeaders,
       ...opts.headers,
     };
     if (this.shopDomain) headers['X-Shop-Domain'] = this.shopDomain;
     const token = opts.token === null ? '' : (opts.token ?? this.token);
-    if (token) headers.Authorization = `Bearer ${token}`;
+    // 真实客户端发送裸 token；后端兼容有无 Bearer 前缀。
+    if (token) headers.Authorization = token;
     return headers;
   }
 
