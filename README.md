@@ -1,0 +1,2 @@
+# classinshop-test-suite
+
