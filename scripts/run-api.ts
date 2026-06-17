@@ -16,8 +16,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 function usage(exitCode = 1): never {
   console.error(`
 Usage:
-  npm run api:run -- --env 14 --file tests/api/api-demo.spec.ts
-  npm run api:run -- -e 14 -f tests/api/api-demo.spec.ts --report
+  npm run test:api -- --env 14 --file tests/api/api-demo.spec.ts
+  npm run test:api -- -e 14 -f tests/api/api-demo.spec.ts --report
 
 Options:
   -e, --env <13|14|im>       被测环境，默认 13
@@ -45,7 +45,7 @@ function normalizeSpecPath(file: string): string {
 
 function parseArgs(argv: string[]): Options {
   const options: Options = {
-    env: '13',
+    env: parseEnv(process.env.TEST_ENV ?? '13'),
     report: false,
     passthrough: [],
   };
@@ -127,12 +127,12 @@ const options = parseArgs(process.argv.slice(2));
 const target = options.file ?? 'tests/api';
 const testArgs = ['test', target, '--project=api', ...options.passthrough];
 
-console.log(`[api:run] TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
+console.log(`[test:api] TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
 
 const testExitCode = runPlaywright(testArgs, options.env);
 
 if (options.report) {
-  console.log('[api:run] Opening Playwright HTML report...');
+  console.log('[test:api] Opening Playwright HTML report...');
   const reportExitCode = runPlaywright(['show-report', 'reports/html'], options.env);
   process.exit(testExitCode || reportExitCode);
 }

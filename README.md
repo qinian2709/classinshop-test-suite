@@ -36,6 +36,8 @@ cp .env.example .env.local
 pnpm test:api
 # 切换环境
 TEST_ENV=14 pnpm test:api
+# 按环境运行指定 API 用例
+pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
 
 # 4. 运行 E2E
 pnpm test:e2e:web
@@ -54,6 +56,7 @@ pnpm report
 | ---------------------------------------------- | -------------------------------------------- |
 | `pnpm test`                                    | 运行全部 Playwright 项目                     |
 | `pnpm test:api`                                | 仅接口自动化                                 |
+| `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts` | 按环境运行指定 API 用例             |
 | `pnpm test:e2e:web` / `pnpm test:e2e:mobile`   | PC / H5 端到端                               |
 | `pnpm test:mp`                                 | 小程序自动化（需 `RUN_MP=1` + 本地微信工具） |
 | `pnpm perf:baseline` / `pnpm perf:order`       | k6 基准 / 负载压测                           |

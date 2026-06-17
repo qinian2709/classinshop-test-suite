@@ -9,9 +9,7 @@
   },
   "scripts": {
     "test": "playwright test",
-    "test:api": "playwright test --project=api",
-    "api": "tsx scripts/run-api.ts",
-    "api:run": "tsx scripts/run-api.ts",
+    "test:api": "tsx scripts/run-api.ts",
     "test:e2e:web": "playwright test --project=e2e-web",
     "test:e2e:mobile": "playwright test --project=e2e-mobile",
     "test:mp": "RUN_MP=1 playwright test --project=miniprogram",
