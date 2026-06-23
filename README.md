@@ -26,8 +26,9 @@ ClassIn 小店统一测试套件。以 pnpm + TypeScript + Playwright 为底座�
 
 ```bash
 # 1. 安装依赖
-pnpm install
-pnpm exec playwright install --with-deps   # E2E 需要浏览器
+pnpm setup
+# 如已安装依赖，仅补装/更新 Playwright 浏览器驱动
+pnpm install:browsers
 
 # 2. 配置凭据（复制后填入真实值，.env.local 不会被提交）
 cp .env.example .env.local
@@ -38,6 +39,8 @@ pnpm test:api
 TEST_ENV=14 pnpm test:api
 # 按环境运行指定 API 用例
 pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
+# 使用默认 Playwright HTML 报告并模拟发送企微通知
+pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify
 # 测试结束后额外生成 Allure HTML 报告
 pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure
 # 生成 Allure HTML 报告并自动打开
@@ -64,9 +67,12 @@ pnpm report:allure:open
 
 | 命令                                           | 作用                                         |
 | ---------------------------------------------- | -------------------------------------------- |
+| `pnpm setup`                                   | 安装依赖并安装 Playwright 浏览器驱动         |
+| `pnpm install:browsers`                        | 安装 / 更新 Playwright 浏览器驱动            |
 | `pnpm test`                                    | 运行全部 Playwright 项目                     |
 | `pnpm test:api`                                | 仅接口自动化                                 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts` | 按环境运行指定 API 用例             |
+| `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify` | 打开默认报告并模拟企微通知 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure` | 测试结束后生成 Allure HTML 报告     |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --open` | 生成并打开 Allure HTML 报告 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify` | 生成 Allure 后模拟企微通知 |
