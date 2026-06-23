@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
 type EnvName = '13' | '14' | 'im';
+type ProjectName = 'api' | 'e2e-web' | 'e2e-mobile' | 'miniprogram';
 
 interface Options {
   env: EnvName;
+  project?: ProjectName;
   file?: string;
   report: boolean;
   allure: boolean;
@@ -26,10 +28,11 @@ function usage(exitCode = 1): never {
   console.error(`
 Usage:
   pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
-  pnpm test:api -- -e 14 -f tests/api/api-demo.spec.ts --allure --open
+  pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure --open
 
 Options:
   -e, --env <13|14|im>       被测环境，默认 13
+  -p, --project <name>        Playwright 项目，默认按 --file 推断，支持 api/e2e-web/e2e-mobile/miniprogram
   -f, --file <spec path>     指定用例文件；不传则运行 tests/api
   --report                   测试结束后打开 Playwright HTML 报告（兼容旧写法）
   --allure                   测试结束后生成 Allure HTML 报告
@@ -46,6 +49,14 @@ function parseEnv(value: string): EnvName {
   return usage();
 }
 
+function parseProject(value: string): ProjectName {
+  if (value === 'api' || value === 'e2e-web' || value === 'e2e-mobile' || value === 'miniprogram') {
+    return value;
+  }
+  console.error(`Invalid --project "${value}". Expected api, e2e-web, e2e-mobile, or miniprogram.`);
+  return usage();
+}
+
 function normalizeSpecPath(file: string): string {
   const withoutAt = file.startsWith('@') ? file.slice(1) : file;
   const marker = 'classinshop-test-suite/';
@@ -58,6 +69,7 @@ function normalizeSpecPath(file: string): string {
 function parseArgs(argv: string[]): Options {
   const options: Options = {
     env: parseEnv(process.env.TEST_ENV ?? '13'),
+    project: undefined,
     report: false,
     allure: false,
     open: false,
@@ -84,6 +96,19 @@ function parseArgs(argv: string[]): Options {
 
     if (arg.startsWith('--env=')) {
       options.env = parseEnv(arg.slice('--env='.length));
+      continue;
+    }
+
+    if (arg === '-p' || arg === '--project') {
+      const value = argv[index + 1];
+      if (!value) usage();
+      options.project = parseProject(value);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--project=')) {
+      options.project = parseProject(arg.slice('--project='.length));
       continue;
     }
 
@@ -126,6 +151,27 @@ function parseArgs(argv: string[]): Options {
   }
 
   return options;
+}
+
+function inferProject(file?: string, explicitProject?: ProjectName): ProjectName {
+  if (explicitProject) return explicitProject;
+  if (file?.startsWith('tests/e2e-web/')) return 'e2e-web';
+  if (file?.startsWith('tests/e2e-mobile/')) return 'e2e-mobile';
+  if (file?.startsWith('tests/miniprogram/')) return 'miniprogram';
+  return 'api';
+}
+
+function defaultTarget(project: ProjectName): string {
+  switch (project) {
+    case 'e2e-web':
+      return 'tests/e2e-web';
+    case 'e2e-mobile':
+      return 'tests/e2e-mobile';
+    case 'miniprogram':
+      return 'tests/miniprogram';
+    default:
+      return 'tests/api';
+  }
 }
 
 function runPlaywright(args: string[], env: EnvName): number {
@@ -172,7 +218,7 @@ function cleanAllureOutput(): void {
 function runAllureReport(): ReportGenerationResult {
   if (!directoryHasEntries(ALLURE_RESULTS_PATH)) {
     console.warn(
-      `[test:api] Skip Allure HTML report: ${ALLURE_RESULTS_PATH} is empty or does not exist.`,
+      `[test] Skip Allure HTML report: ${ALLURE_RESULTS_PATH} is empty or does not exist.`,
     );
     return { exitCode: 0, generated: false };
   }
@@ -199,7 +245,7 @@ function runAllureReport(): ReportGenerationResult {
 
 function openAllureReport(allureReportGenerated: boolean): number {
   if (!allureReportGenerated) {
-    console.warn('[test:api] Skip opening Allure report: no Allure HTML report was generated.');
+    console.warn('[test] Skip opening Allure report: no Allure HTML report was generated.');
     return 0;
   }
 
@@ -216,10 +262,10 @@ function openAllureReport(allureReportGenerated: boolean): number {
   });
 
   child.on('error', (error) => {
-    console.error(`[test:api] Failed to open Allure report: ${error.message}`);
+    console.error(`[test] Failed to open Allure report: ${error.message}`);
   });
   child.unref();
-  console.log(`[test:api] Allure report server started in background: ${path.join(ROOT, ALLURE_HTML_PATH)}`);
+  console.log(`[test] Allure report server started in background: ${path.join(ROOT, ALLURE_HTML_PATH)}`);
   return 0;
 }
 
@@ -274,7 +320,7 @@ function simulateWeComNotification(
     ? `总数 ${summary.tests}，失败 ${summary.failures}，错误 ${summary.errors}，跳过 ${summary.skipped}，耗时 ${summary.time.toFixed(2)}s`
     : '未读取到 JUnit 汇总';
   const content = [
-    `### ClassInShop API 测试${status}`,
+    `### ClassInShop 测试${status}`,
     `> 环境：${options.env}`,
     `> 目标：${target}`,
     `> 结果：${summaryLine}`,
@@ -287,16 +333,18 @@ function simulateWeComNotification(
     markdown: { content },
   };
 
-  console.log('[test:api] Simulating WeCom robot notification...');
-  console.log('[test:api] Replace this log with POST WEWORK_WEBHOOK_URL when ready.');
+  console.log('[test] Simulating WeCom robot notification...');
+  console.log('[test] Replace this log with POST WEWORK_WEBHOOK_URL when ready.');
   console.log(JSON.stringify(payload, null, 2));
 }
 
 const options = parseArgs(process.argv.slice(2));
-const target = options.file ?? 'tests/api';
-const testArgs = ['test', target, '--project=api', ...options.passthrough];
+const project = inferProject(options.file, options.project);
+const target = options.file ?? defaultTarget(project);
+const testArgs = ['test', target, `--project=${project}`, ...options.passthrough];
+const logPrefix = `[test:${project}]`;
 
-console.log(`[test:api] TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
+console.log(`${logPrefix} TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
 
 if (options.allure) {
   cleanAllureOutput();
@@ -307,7 +355,7 @@ let allureExitCode = 0;
 let allureReportGenerated = false;
 
 if (options.allure) {
-  console.log('[test:api] Generating Allure HTML report...');
+  console.log(`${logPrefix} Generating Allure HTML report...`);
   const result = runAllureReport();
   allureExitCode = result.exitCode;
   allureReportGenerated = result.generated;
@@ -321,14 +369,14 @@ let openExitCode = 0;
 
 if (options.open) {
   if (options.allure) {
-    console.log('[test:api] Opening Allure HTML report...');
+    console.log(`${logPrefix} Opening Allure HTML report...`);
     openExitCode = openAllureReport(allureReportGenerated);
   } else {
-    console.log('[test:api] Opening Playwright HTML report...');
+    console.log(`${logPrefix} Opening Playwright HTML report...`);
     openExitCode = runPlaywright(['show-report', 'reports/html'], options.env);
   }
 } else if (options.report) {
-  console.log('[test:api] Opening Playwright HTML report...');
+  console.log(`${logPrefix} Opening Playwright HTML report...`);
   openExitCode = runPlaywright(['show-report', 'reports/html'], options.env);
 }
 

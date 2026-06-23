@@ -48,6 +48,8 @@ pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify
 # 4. 运行 E2E
 pnpm test:e2e:web
 pnpm test:e2e:mobile
+# 按环境运行指定 PC E2E 用例
+pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure
 
 # 5. 查看报告
 pnpm report
@@ -68,7 +70,8 @@ pnpm report:allure:open
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure` | 测试结束后生成 Allure HTML 报告     |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --open` | 生成并打开 Allure HTML 报告 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify` | 生成 Allure 后模拟企微通知 |
-| `pnpm test:e2e:web` / `pnpm test:e2e:mobile`   | PC / H5 端到端                               |
+| `pnpm test:e2e:web` / `pnpm test:e2e:mobile`   | PC / H5 端到端，支持 `--env` / `--file` / `--allure` |
+| `pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure` | 按环境运行指定 PC E2E 用例 |
 | `pnpm test:mp`                                 | 小程序自动化（需 `RUN_MP=1` + 本地微信工具） |
 | `pnpm report` / `pnpm report:allure:open`      | 打开 Playwright / Allure HTML 报告           |
 | `pnpm perf:baseline` / `pnpm perf:order`       | k6 基准 / 负载压测                           |

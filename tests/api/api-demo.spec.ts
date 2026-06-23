@@ -1,5 +1,5 @@
 import { test, expect } from '@shared';
-import { Endpoints, SUCCESS_CODE } from '@shared';
+import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
 import { accounts } from '@config';
 
 interface ShopSummary {
@@ -12,20 +12,6 @@ interface ApiDemoResponse {
   code: number;
   msg: string;
   data: ShopSummary[];
-}
-
-function headersToRecord(source: Headers): Record<string, string> {
-  const result: Record<string, string> = {};
-  source.forEach((value, key) => {
-    result[key.toLowerCase()] = value;
-  });
-  return result;
-}
-
-function redactResponseHeaders(headers: Record<string, string>): Record<string, string> {
-  const redacted = { ...headers };
-  if (redacted['set-cookie']) redacted['set-cookie'] = '<masked>';
-  return redacted;
 }
 
 test.describe('API Demo：14 环境我的店铺接口 @smoke', () => {
@@ -57,34 +43,27 @@ test.describe('API Demo：14 环境我的店铺接口 @smoke', () => {
       headers: actualHeaders,
     });
     const status = response.status;
-    const headers = headersToRecord(response.headers);
     const body = (await response.json()) as ApiDemoResponse;
 
-    await test.info().attach('api-call.json', {
-      contentType: 'application/json',
-      body: JSON.stringify(
-        {
-          request: {
-            method: 'GET',
-            url,
-            headers: requestHeaders,
-            body: null,
-          },
-          response: {
-            status,
-            headers: redactResponseHeaders(headers),
-            body,
-          },
-          assertions: ['HTTP status is 200', 'business code is 0', 'data is an array'],
-        },
-        null,
-        2,
-      ),
+    await attachApiCallLog({
+      testInfo: test.info(),
+      request: {
+        method: 'GET',
+        url,
+        headers: requestHeaders,
+        body: null,
+      },
+      response: {
+        status,
+        headers: response.headers,
+        body,
+      },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', 'data 应为店铺列表数组'],
     });
 
-    expect(status).toBe(200);
-    expect(body.code).toBe(SUCCESS_CODE);
-    expect(Array.isArray(body.data)).toBe(true);
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(Array.isArray(body.data), 'data 应为店铺列表数组').toBe(true);
 
     test.info().annotations.push({
       type: 'api-demo',
