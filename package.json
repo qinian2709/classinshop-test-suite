@@ -9,7 +9,7 @@
   },
   "scripts": {
     "setup": "pnpm install && pnpm install:browsers",
-    "install:browsers": "playwright install --with-deps",
+    "install:browsers": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install --with-deps",
     "test": "playwright test",
     "test:api": "tsx scripts/run-api.ts",
     "test:e2e:web": "tsx scripts/run-api.ts --project e2e-web",

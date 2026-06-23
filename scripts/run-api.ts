@@ -66,6 +66,26 @@ function normalizeSpecPath(file: string): string {
   return withoutAt;
 }
 
+function isRunnerOption(arg: string): boolean {
+  return (
+    arg === '-e' ||
+    arg === '--env' ||
+    arg.startsWith('--env=') ||
+    arg === '-p' ||
+    arg === '--project' ||
+    arg.startsWith('--project=') ||
+    arg === '-f' ||
+    arg === '--file' ||
+    arg.startsWith('--file=') ||
+    arg === '--report' ||
+    arg === '--allure' ||
+    arg === '--open' ||
+    arg === '--notify' ||
+    arg === '-h' ||
+    arg === '--help'
+  );
+}
+
 function parseArgs(argv: string[]): Options {
   const options: Options = {
     env: parseEnv(process.env.TEST_ENV ?? '13'),
@@ -80,6 +100,10 @@ function parseArgs(argv: string[]): Options {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (!arg) continue;
+
+    if (arg === '--' && (index === 0 || argv.slice(index + 1).some(isRunnerOption))) {
+      continue;
+    }
 
     if (arg === '--') {
       options.passthrough.push(...argv.slice(index + 1));
@@ -188,7 +212,7 @@ function runPlaywright(args: string[], env: EnvName): number {
     env: {
       ...process.env,
       TEST_ENV: env,
-      PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH ?? '0',
+      PLAYWRIGHT_BROWSERS_PATH: '0',
     },
   });
 
