@@ -1,4 +1,4 @@
-import { env } from '../../config/index.js';
+import { env, formatAuthorizationHeader } from '../../config/index.js';
 
 /**
  * 真实前端浏览器指纹头。被测环境前置 WAF 会拦截"非浏览器"特征的请求（返回 nginx 403），
@@ -18,7 +18,7 @@ export function browserHeaders(): Record<string, string> {
   };
 }
 
-/** 鉴权头：真实客户端发送裸 token（后端 getAuthorizationToken 兼容有无 Bearer 前缀）。 */
+/** 鉴权头：兼容 TEST_TOKEN 为裸 JWT 或完整 Bearer 值。 */
 export function authHeader(token: string): Record<string, string> {
-  return token ? { Authorization: token } : {};
+  return token ? { Authorization: formatAuthorizationHeader(token) } : {};
 }

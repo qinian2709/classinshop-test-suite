@@ -8,6 +8,8 @@ export const Endpoints = {
     agreement: '/system/agreement',
     agreementList: '/system/agreement/list',
     sendCode: '/system/sendcode',
+    cosSign: '/system/cos/sign',
+    cosDownloadSign: '/system/cos/download/sign',
   },
   user: {
     loginBySign: '/user/loginbysign',
@@ -30,13 +32,18 @@ export const Endpoints = {
     decoration: '/shop/decoration',
     goodsList: '/shop/goods',
     goodsDetail: (id: string | number) => `/shop/goods/${id}`,
+    couponDetail: (id: string | number) => `/shop/coupon/${id}`,
     availableCoupons: '/shop/coupon/available',
     receiveCoupon: (id: string | number) => `/shop/coupon/${id}/receive`,
+    userCouponList: '/shop/user/coupon/list',
     orderCreate: '/shop/goods/order/create',
     orderCalculate: '/shop/goods/order/calculate',
   },
   org: {
     detail: (orgId: string | number) => `/org/${orgId}/detail`,
+  },
+  classin: {
+    classList: (agencyId: string | number) => `/classin/class/${agencyId}`,
   },
   goods: {
     detail: (id: string | number) => `/goods/${id}`,
@@ -65,6 +72,20 @@ export const Endpoints = {
   },
   // 商家后台（/shop/:shopId/*，需 JWT + 店铺成员 + GetShopByID）
   shopAdmin: {
+    goodsCreate: (shopId: string | number) => `/shop/${shopId}/goods/create`,
+    goodsUpdate: (shopId: string | number) => `/shop/${shopId}/goods/update`,
+    goodsStatus: (shopId: string | number) => `/shop/${shopId}/goods/status`,
+    goodsDelete: (shopId: string | number) => `/shop/${shopId}/goods/delete`,
+    goodsDetail: (shopId: string | number, goodsId: string | number) =>
+      `/shop/${shopId}/goods/${goodsId}`,
+    goodsList: (shopId: string | number) => `/shop/${shopId}/goods/list`,
+    appointmentTeachers: (shopId: string | number) => `/shop/${shopId}/appointment/teachers`,
+    couponCreate: (shopId: string | number) => `/shop/${shopId}/coupon/create`,
+    couponDetail: (shopId: string | number, couponId: string | number) =>
+      `/shop/${shopId}/coupon/${couponId}`,
+    couponList: (shopId: string | number) => `/shop/${shopId}/coupon/list`,
+    couponStatus: (shopId: string | number) => `/shop/${shopId}/coupon/status`,
+    couponCodeVoid: (shopId: string | number) => `/shop/${shopId}/coupon/code/void`,
     notificationsSummary: (shopId: string | number) => `/shop/${shopId}/notifications/summary`,
   },
 } as const;

@@ -73,7 +73,6 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
 
   anonApi: async ({}, use) => {
     const helper = new ApiHelper(env.apiBaseURL, {
-      'Content-Type': 'application/json',
       ...browserHeaders(),
       ...shopHeaders(),
     });
@@ -85,7 +84,6 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
       test.skip(true, '未配置鉴权凭据（TEST_TOKEN 或签名），跳过需登录用例');
     }
     const helper = new ApiHelper(env.apiBaseURL, {
-      'Content-Type': 'application/json',
       ...browserHeaders(),
       ...authHeader(workerToken),
       ...shopHeaders(),

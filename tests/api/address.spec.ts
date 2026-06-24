@@ -1,7 +1,7 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE } from '@shared';
 import { buildAddressPayload } from '@shared';
-import type { Address, ListData } from '@shared';
+import type { Address } from '@shared';
 
 /**
  * 收货地址（需登录）：演示"创建 -> 校验 -> 自动清理"的完整数据生命周期，
@@ -9,11 +9,17 @@ import type { Address, ListData } from '@shared';
  */
 test.describe('收货地址', () => {
   test('GET /user/address/list 返回地址列表', async ({ api }) => {
-    const { body } = await api.get<ListData<Address>>(Endpoints.user.addressList);
+    const { body } = await api.get<Address[]>(Endpoints.user.addressList);
     expect(body.code).toBe(SUCCESS_CODE);
+    expect(Array.isArray(body.data)).toBe(true);
   });
 
   test('创建地址后可在列表中查到，并在结束后清理', async ({ api, data }) => {
+    const { body: beforeList } = await api.get<Address[]>(Endpoints.user.addressList);
+    expect(beforeList.code).toBe(SUCCESS_CODE);
+    expect(Array.isArray(beforeList.data)).toBe(true);
+    test.skip(beforeList.data.length >= 20, '当前账号收货地址已达上限，跳过创建链路');
+
     const payload = buildAddressPayload();
     const { body: created } = await api.post<Address>(Endpoints.user.addressCreate, payload);
 
@@ -26,8 +32,9 @@ test.describe('收货地址', () => {
       });
     }
 
-    const { body: list } = await api.get<ListData<Address>>(Endpoints.user.addressList);
+    const { body: list } = await api.get<Address[]>(Endpoints.user.addressList);
     expect(list.code).toBe(SUCCESS_CODE);
+    expect(list.data.some((address) => address.id === addressId)).toBe(true);
   });
 
   test('创建地址缺少必填字段应失败', async ({ api }) => {

@@ -1,4 +1,4 @@
-import { env } from '../../config/index.js';
+import { env, formatAuthorizationHeader } from '../../config/index.js';
 import { createLogger } from '../utils/logger.js';
 import { browserHeaders } from './browser-headers.js';
 import type { ApiResponse } from './types.js';
@@ -66,8 +66,7 @@ export class ApiClient {
     };
     if (this.shopDomain) headers['X-Shop-Domain'] = this.shopDomain;
     const token = opts.token === null ? '' : (opts.token ?? this.token);
-    // 真实客户端发送裸 token；后端兼容有无 Bearer 前缀。
-    if (token) headers.Authorization = token;
+    if (token) headers.Authorization = formatAuthorizationHeader(token);
     return headers;
   }
 

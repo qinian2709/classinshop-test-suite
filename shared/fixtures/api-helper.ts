@@ -40,13 +40,27 @@ export class ApiHelper {
     return url.toString();
   }
 
+  private mergeHeaders(headers?: Record<string, string>, hasBody = false): Record<string, string> {
+    const merged: Record<string, string> = { ...this.defaultHeaders };
+    if (hasBody) merged['content-type'] = 'application/json';
+
+    for (const [key, value] of Object.entries(headers ?? {})) {
+      const existingKey = Object.keys(merged).find(
+        (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+      );
+      if (existingKey) delete merged[existingKey];
+      merged[key] = value;
+    }
+
+    return merged;
+  }
+
   private async send(method: HttpMethod, path: string, opts: CallOptions): Promise<Response> {
-    const headers: Record<string, string> = { ...this.defaultHeaders, ...opts.headers };
-    const body = opts.data !== undefined ? JSON.stringify(opts.data) : undefined;
+    const hasBody = opts.data !== undefined;
     return fetch(this.buildUrl(path, opts.query), {
       method: method.toUpperCase(),
-      headers,
-      body,
+      headers: this.mergeHeaders(opts.headers, hasBody),
+      body: hasBody ? JSON.stringify(opts.data) : undefined,
     });
   }
 
@@ -54,9 +68,10 @@ export class ApiHelper {
   async raw(method: HttpMethod, path: string, opts: CallOptions = {}): Promise<RawResponse> {
     const res = await this.send(method, path, opts);
     const text = await res.text();
+
     return {
       status: () => res.status,
-      json: async <T = unknown>() => JSON.parse(text) as T,
+      json: async <T = any>() => JSON.parse(text) as T,
       text: async () => text,
     };
   }
