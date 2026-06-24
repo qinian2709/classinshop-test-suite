@@ -1,27 +1,5 @@
 import { test, expect } from './fixtures/authed.js';
-import { env } from '@config';
-import type { Page, TestInfo } from '@playwright/test';
-
-async function attachStepScreenshot(
-  page: Page,
-  testInfo: TestInfo,
-  name: string,
-): Promise<void> {
-  if (!env.e2eStepScreenshots) return;
-
-  await page.locator('#root').waitFor({ state: 'attached', timeout: 15_000 }).catch(() => undefined);
-  await page
-    .waitForFunction(() => (document.querySelector('#root')?.textContent ?? '').trim().length > 0, null, {
-      timeout: 5_000,
-    })
-    .catch(() => undefined);
-  await page.waitForTimeout(1_000);
-
-  await testInfo.attach(`${name}.png`, {
-    contentType: 'image/png',
-    body: await page.screenshot({ fullPage: true }),
-  });
-}
+import { attachStepScreenshot } from './helpers/screenshots.js';
 
 test.describe('H5 登录态 @smoke', () => {
   test('注入 MOBILE_TEST_TOKEN 后可打开我的页面', async ({ authedMobilePage: page }, testInfo) => {
@@ -42,9 +20,9 @@ test.describe('H5 登录态 @smoke', () => {
 
     await page.goto('/learn', { waitUntil: 'domcontentloaded' });
     await expect(page.getByPlaceholder('搜索课程名'), '学习页应展示课程搜索框').toBeVisible();
-    await expect(page.getByText(/^全部/), '学习页应展示全部课程 Tab').toBeVisible();
-    await expect(page.getByText(/^预约课/), '学习页应展示预约课 Tab').toBeVisible();
-    await expect(page.getByText(/^固定课/), '学习页应展示固定课 Tab').toBeVisible();
+    await expect(page.getByRole('tab', { name: /^全部/ }), '学习页应展示全部课程 Tab').toBeVisible();
+    await expect(page.getByRole('tab', { name: /^预约课/ }), '学习页应展示预约课 Tab').toBeVisible();
+    await expect(page.getByRole('tab', { name: /^固定课/ }), '学习页应展示固定课 Tab').toBeVisible();
     await attachStepScreenshot(page, testInfo, '05-学习页面已展示');
   });
 });

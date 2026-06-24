@@ -4,6 +4,10 @@ import { env } from './config/index.js';
 const isCI = !!process.env.CI;
 // 小程序自动化依赖本地微信开发者工具，默认不在常规/CI 跑，需 RUN_MP=1 显式开启。
 const runMiniprogram = process.env.RUN_MP === '1';
+const htmlReportFolder = process.env.PLAYWRIGHT_HTML_REPORT_DIR || 'reports/html';
+const junitReportFile = process.env.PLAYWRIGHT_JUNIT_REPORT_FILE || 'reports/junit.xml';
+const allureResultsDir = process.env.ALLURE_RESULTS_DIR || 'reports/allure-results';
+const artifactsDir = process.env.PLAYWRIGHT_ARTIFACTS_DIR || 'reports/artifacts';
 
 export default defineConfig({
   testDir: 'tests',
@@ -15,11 +19,11 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [
     ['list'],
-    ['html', { outputFolder: 'reports/html', open: 'never' }],
-    ['junit', { outputFile: 'reports/junit.xml' }],
-    ['allure-playwright', { resultsDir: 'reports/allure-results', detail: true }],
+    ['html', { outputFolder: htmlReportFolder, open: 'never' }],
+    ['junit', { outputFile: junitReportFile }],
+    ['allure-playwright', { resultsDir: allureResultsDir, detail: true }],
   ],
-  outputDir: 'reports/artifacts',
+  outputDir: artifactsDir,
   use: {
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',

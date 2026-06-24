@@ -58,7 +58,7 @@ Do not use `TEST_TOKEN` for mobile C-end login unless the scenario explicitly us
 
 ## Screenshots
 
-By default, Playwright keeps screenshots only on failure via project config. Use `E2E_STEP_SCREENSHOTS=1` only while debugging or when the user needs visual verification for each important step.
+Playwright keeps screenshots on failure by default. `E2E_STEP_SCREENSHOTS=1` is an additional switch for attaching screenshots after each important UI step; keep it `0` for normal runs and set it to `1` when the user needs visual verification for every step.
 
 When attaching screenshots:
 
@@ -84,6 +84,31 @@ await expect(page.getByPlaceholder('搜索课程名')).toBeVisible();
 ```
 
 Prefer semantic locators (`getByText`, `getByRole`, placeholders) over CSS selectors unless the UI lacks stable text.
+
+When a text may appear in multiple UI regions, avoid broad `getByText` assertions. This is common in mobile H5 pages where Tab titles, course tags, coupon status labels, and card content reuse the same Chinese text. Broad text locators increase false positives and can fail in Playwright strict mode when live data changes.
+
+Bad:
+
+```ts
+await expect(page.getByText(/^预约课/), '学习页应展示预约课 Tab').toBeVisible();
+await expect(page.getByText('未使用', { exact: true }), '券包应展示未使用 Tab').toBeVisible();
+```
+
+Good:
+
+```ts
+await expect(page.getByRole('tab', { name: /^预约课/ }), '学习页应展示预约课 Tab').toBeVisible();
+await expect(page.getByRole('tab', { name: '未使用' }), '券包应展示未使用 Tab').toBeVisible();
+```
+
+If the target is inside a known card, popup, or page section, first narrow the container, then assert text inside it:
+
+```ts
+const couponCard = page.locator('.adm-tabs-content').getByText(couponName).locator('..');
+await expect(couponCard.getByText('免费领取', { exact: true }), '券卡应展示免费领取来源').toBeVisible();
+```
+
+Use `.first()` or `.nth()` only when the order is itself the business assertion or the list has already been narrowed by unique data. Do not use them merely to silence strict mode.
 
 ## Runner Commands
 

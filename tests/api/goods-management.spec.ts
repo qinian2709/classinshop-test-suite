@@ -7,7 +7,7 @@ import type { TestInfo } from '@playwright/test';
 
 type Query = Record<string, string | number | boolean | undefined>;
 const keepTestGoods = process.env.KEEP_TEST_GOODS === '1';
-const goodsCoverFile = new URL('../fixtures/goods-cover.png.base64', import.meta.url);
+const goodsCoverFile = new URL('./fixtures/goods-cover.png.base64', import.meta.url);
 
 interface MerchantShop {
   orgId: number;

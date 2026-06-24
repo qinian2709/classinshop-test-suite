@@ -86,6 +86,24 @@ Avoid adding broad waits in specs.
 - If a shared readiness wait is too slow or flaky, adjust the relevant Page Object/helper rather than adding sleeps in the spec.
 - Do not use arbitrary `waitForTimeout` unless debugging temporarily.
 
+## Screenshots
+
+Playwright keeps screenshots on failure by default. `E2E_STEP_SCREENSHOTS=1` is an additional switch for attaching screenshots after each important UI step; keep it `0` for normal runs and set it to `1` when the user needs visual verification for every step.
+
+When attaching Web UI step screenshots, use:
+
+```ts
+import { attachStepScreenshot } from './helpers/screenshots.js';
+```
+
+Then call it after meaningful business steps:
+
+```ts
+await attachStepScreenshot(page, testInfo, '店铺列表已展示');
+```
+
+The helper waits for `#root`, waits for non-empty page text when possible, and adds a short stability wait before screenshotting.
+
 ## Reports And Attachments
 
 Use meaningful attachment and assertion names because Allure exposes them directly.
@@ -117,6 +135,7 @@ Before finishing an E2E Web change:
 - The spec does not duplicate login injection logic.
 - Environment values come from `@config`.
 - Assertions include meaningful messages.
+- Step screenshots are attached when `E2E_STEP_SCREENSHOTS=1`.
 - Selectors/actions are placed in Page Objects when reused or non-trivial.
 - Waits are specific and not unnecessarily long.
 - `npm run typecheck` passes.

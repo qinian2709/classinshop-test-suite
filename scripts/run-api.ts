@@ -18,11 +18,19 @@ interface Options {
 }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const HTML_REPORT_PATH = 'reports/html/index.html';
 const DEFAULT_ALLURE_RESULTS_PATH = 'allure-results';
-const ALLURE_RESULTS_PATH = 'reports/allure-results';
-const ALLURE_HTML_PATH = 'reports/allure-html/index.html';
-const JUNIT_REPORT_PATH = 'reports/junit.xml';
+
+interface ReportPaths {
+  runId: string;
+  runDir: string;
+  htmlDir: string;
+  htmlIndex: string;
+  allureResultsDir: string;
+  allureHtmlDir: string;
+  allureIndex: string;
+  junitFile: string;
+  artifactsDir: string;
+}
 
 function usage(exitCode = 1): never {
   console.error(`
@@ -198,7 +206,32 @@ function defaultTarget(project: ProjectName): string {
   }
 }
 
-function runPlaywright(args: string[], env: EnvName): number {
+function buildRunId(project: ProjectName): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return `${timestamp}-${project}-${process.pid}`;
+}
+
+function buildReportPaths(project: ProjectName): ReportPaths {
+  const runId = buildRunId(project);
+  const runDir = path.join('reports', 'runs', runId);
+  return {
+    runId,
+    runDir,
+    htmlDir: path.join(runDir, 'html'),
+    htmlIndex: path.join(runDir, 'html', 'index.html'),
+    allureResultsDir: path.join(runDir, 'allure-results'),
+    allureHtmlDir: path.join(runDir, 'allure-html'),
+    allureIndex: path.join(runDir, 'allure-html', 'index.html'),
+    junitFile: path.join(runDir, 'junit.xml'),
+    artifactsDir: path.join(runDir, 'artifacts'),
+  };
+}
+
+function runPlaywright(
+  args: string[],
+  env: EnvName,
+  envOverrides: Record<string, string> = {},
+): number {
   const bin = path.join(
     ROOT,
     'node_modules',
@@ -213,6 +246,7 @@ function runPlaywright(args: string[], env: EnvName): number {
       ...process.env,
       TEST_ENV: env,
       PLAYWRIGHT_BROWSERS_PATH: '0',
+      ...envOverrides,
     },
   });
 
@@ -228,21 +262,25 @@ interface ReportGenerationResult {
   generated: boolean;
 }
 
+function resolveRootPath(relativePath: string): string {
+  return path.isAbsolute(relativePath) ? relativePath : path.join(ROOT, relativePath);
+}
+
 function directoryHasEntries(relativePath: string): boolean {
-  const target = path.join(ROOT, relativePath);
+  const target = resolveRootPath(relativePath);
   return fs.existsSync(target) && fs.readdirSync(target).length > 0;
 }
 
-function cleanAllureOutput(): void {
+function cleanAllureOutput(reportPaths: ReportPaths): void {
   fs.rmSync(path.join(ROOT, DEFAULT_ALLURE_RESULTS_PATH), { recursive: true, force: true });
-  fs.rmSync(path.join(ROOT, ALLURE_RESULTS_PATH), { recursive: true, force: true });
-  fs.rmSync(path.join(ROOT, path.dirname(ALLURE_HTML_PATH)), { recursive: true, force: true });
+  fs.rmSync(resolveRootPath(reportPaths.allureResultsDir), { recursive: true, force: true });
+  fs.rmSync(resolveRootPath(reportPaths.allureHtmlDir), { recursive: true, force: true });
 }
 
-function runAllureReport(): ReportGenerationResult {
-  if (!directoryHasEntries(ALLURE_RESULTS_PATH)) {
+function runAllureReport(reportPaths: ReportPaths): ReportGenerationResult {
+  if (!directoryHasEntries(reportPaths.allureResultsDir)) {
     console.warn(
-      `[test] Skip Allure HTML report: ${ALLURE_RESULTS_PATH} is empty or does not exist.`,
+      `[test] Skip Allure HTML report: ${reportPaths.allureResultsDir} is empty or does not exist.`,
     );
     return { exitCode: 0, generated: false };
   }
@@ -253,8 +291,7 @@ function runAllureReport(): ReportGenerationResult {
     '.bin',
     process.platform === 'win32' ? 'allure.cmd' : 'allure',
   );
-  const outputDir = path.dirname(ALLURE_HTML_PATH);
-  const result = spawnSync(bin, ['generate', ALLURE_RESULTS_PATH, '--clean', '-o', outputDir], {
+  const result = spawnSync(bin, ['generate', reportPaths.allureResultsDir, '--clean', '-o', reportPaths.allureHtmlDir], {
     cwd: ROOT,
     stdio: 'inherit',
   });
@@ -267,7 +304,7 @@ function runAllureReport(): ReportGenerationResult {
   return { exitCode, generated: exitCode === 0 };
 }
 
-function openAllureReport(allureReportGenerated: boolean): number {
+function openAllureReport(reportPaths: ReportPaths, allureReportGenerated: boolean): number {
   if (!allureReportGenerated) {
     console.warn('[test] Skip opening Allure report: no Allure HTML report was generated.');
     return 0;
@@ -279,7 +316,7 @@ function openAllureReport(allureReportGenerated: boolean): number {
     '.bin',
     process.platform === 'win32' ? 'allure.cmd' : 'allure',
   );
-  const child = spawn(bin, ['open', path.dirname(ALLURE_HTML_PATH)], {
+  const child = spawn(bin, ['open', reportPaths.allureHtmlDir], {
     cwd: ROOT,
     detached: true,
     stdio: 'ignore',
@@ -289,7 +326,7 @@ function openAllureReport(allureReportGenerated: boolean): number {
     console.error(`[test] Failed to open Allure report: ${error.message}`);
   });
   child.unref();
-  console.log(`[test] Allure report server started in background: ${path.join(ROOT, ALLURE_HTML_PATH)}`);
+  console.log(`[test] Allure report server started in background: ${path.join(ROOT, reportPaths.allureIndex)}`);
   return 0;
 }
 
@@ -306,8 +343,8 @@ function readNumberAttr(attrs: string, name: keyof JUnitSummary): number {
   return match ? Number(match[1]) : 0;
 }
 
-function readJUnitSummary(): JUnitSummary | null {
-  const file = path.join(ROOT, JUNIT_REPORT_PATH);
+function readJUnitSummary(reportPaths: ReportPaths): JUnitSummary | null {
+  const file = resolveRootPath(reportPaths.junitFile);
   if (!fs.existsSync(file)) return null;
 
   const xml = fs.readFileSync(file, 'utf8');
@@ -329,17 +366,18 @@ function simulateWeComNotification(
   target: string,
   exitCode: number,
   allureReportGenerated: boolean,
+  reportPaths: ReportPaths,
 ): void {
-  const summary = readJUnitSummary();
+  const summary = readJUnitSummary(reportPaths);
   const status =
     exitCode !== 0
       ? '失败'
       : summary && summary.tests > 0 && summary.tests === summary.skipped
         ? '跳过'
         : '通过';
-  const reportPath = path.join(ROOT, HTML_REPORT_PATH);
+  const reportPath = path.join(ROOT, reportPaths.htmlIndex);
   const reportUrl = process.env.REPORT_URL || reportPath;
-  const allureReportUrl = process.env.ALLURE_REPORT_URL || path.join(ROOT, ALLURE_HTML_PATH);
+  const allureReportUrl = process.env.ALLURE_REPORT_URL || path.join(ROOT, reportPaths.allureIndex);
   const summaryLine = summary
     ? `总数 ${summary.tests}，失败 ${summary.failures}，错误 ${summary.errors}，跳过 ${summary.skipped}，耗时 ${summary.time.toFixed(2)}s`
     : '未读取到 JUnit 汇总';
@@ -350,7 +388,7 @@ function simulateWeComNotification(
     `> 结果：${summaryLine}`,
     `> HTML Report：${reportUrl}`,
     ...(allureReportGenerated ? [`> Allure Report：${allureReportUrl}`] : []),
-    `> JUnit Report：${path.join(ROOT, JUNIT_REPORT_PATH)}`,
+    `> JUnit Report：${path.join(ROOT, reportPaths.junitFile)}`,
   ].join('\n');
   const payload = {
     msgtype: 'markdown',
@@ -367,26 +405,34 @@ const project = inferProject(options.file, options.project);
 const target = options.file ?? defaultTarget(project);
 const testArgs = ['test', target, `--project=${project}`, ...options.passthrough];
 const logPrefix = `[test:${project}]`;
+const reportPaths = buildReportPaths(project);
+const playwrightReportEnv = {
+  PLAYWRIGHT_HTML_REPORT_DIR: reportPaths.htmlDir,
+  PLAYWRIGHT_JUNIT_REPORT_FILE: reportPaths.junitFile,
+  ALLURE_RESULTS_DIR: reportPaths.allureResultsDir,
+  PLAYWRIGHT_ARTIFACTS_DIR: reportPaths.artifactsDir,
+};
 
 console.log(`${logPrefix} TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
+console.log(`${logPrefix} Report run directory: ${reportPaths.runDir}`);
 
 if (options.allure) {
-  cleanAllureOutput();
+  cleanAllureOutput(reportPaths);
 }
 
-const testExitCode = runPlaywright(testArgs, options.env);
+const testExitCode = runPlaywright(testArgs, options.env, playwrightReportEnv);
 let allureExitCode = 0;
 let allureReportGenerated = false;
 
 if (options.allure) {
   console.log(`${logPrefix} Generating Allure HTML report...`);
-  const result = runAllureReport();
+  const result = runAllureReport(reportPaths);
   allureExitCode = result.exitCode;
   allureReportGenerated = result.generated;
 }
 
 if (options.notify) {
-  simulateWeComNotification(options, target, testExitCode, allureReportGenerated);
+  simulateWeComNotification(options, target, testExitCode, allureReportGenerated, reportPaths);
 }
 
 let openExitCode = 0;
@@ -394,14 +440,14 @@ let openExitCode = 0;
 if (options.open) {
   if (options.allure) {
     console.log(`${logPrefix} Opening Allure HTML report...`);
-    openExitCode = openAllureReport(allureReportGenerated);
+    openExitCode = openAllureReport(reportPaths, allureReportGenerated);
   } else {
     console.log(`${logPrefix} Opening Playwright HTML report...`);
-    openExitCode = runPlaywright(['show-report', 'reports/html'], options.env);
+    openExitCode = runPlaywright(['show-report', reportPaths.htmlDir], options.env);
   }
 } else if (options.report) {
   console.log(`${logPrefix} Opening Playwright HTML report...`);
-  openExitCode = runPlaywright(['show-report', 'reports/html'], options.env);
+  openExitCode = runPlaywright(['show-report', reportPaths.htmlDir], options.env);
 }
 
 process.exit(testExitCode || allureExitCode || openExitCode);

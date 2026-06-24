@@ -94,9 +94,11 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 
 ## 8. 报告
 
-- 运行后 HTML 报告在 `reports/html`，`pnpm report` 打开。
-- JUnit 在 `reports/junit.xml`（CI 解析）。
-- 失败截图 / trace / video 在 `reports/artifacts`。
+- 通过 `pnpm test:api`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
+- 本次 HTML 报告在该目录的 `html/index.html`；加 `--open` 会打开本次报告。
+- 本次 JUnit 在该目录的 `junit.xml`。
+- 失败截图 / trace / video 在该目录的 `artifacts/`。
+- 直接执行 `pnpm exec playwright test ...` 时仍使用 Playwright 默认配置路径：`reports/html`、`reports/junit.xml`、`reports/artifacts`。
 
 ## 9. CI
 
