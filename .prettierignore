@@ -1,0 +1,7 @@
+node_modules/
+reports/
+test-results/
+playwright-report/
+shared/api/schema.d.ts
+pnpm-lock.yaml
+perf/results/

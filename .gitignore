@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build / generated
+shared/api/schema.d.ts
+
+# test artifacts
+reports/*
+!reports/.gitkeep
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+perf/results/
+
+# local env & secrets (never commit real accounts / tokens)
+.env.local
+.env.*.local
+
+# logs
+logs/
+*.log
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/

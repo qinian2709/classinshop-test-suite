@@ -1,0 +1,113 @@
+# classinshop-test-suite CI：运行接口自动化与 E2E，产出统一报告。
+# 与其他仓库一致，按分支 13/14/im 触发；并支持定时（schedule）夜间回归。
+#
+# 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
+#   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
+#   SHOP_DOMAIN    被测店铺域名（X-Shop-Domain），如 https://demo.shop13.eeo.im
+#   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
+#   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
+
+variables:
+  # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
+  PLAYWRIGHT_IMAGE: 'mcr.microsoft.com/playwright:v1.61.0-jammy'
+  PNPM_VERSION: '10'
+
+workflow:
+  rules:
+    # 分支 13/14/im 推送时运行
+    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
+    # 定时任务（夜间回归）运行
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    # 合并请求运行（只跑接口冒烟）
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+stages:
+  - prepare
+  - test
+  - report
+
+# 根据分支推导被测环境；schedule 用 SCHEDULE_TEST_ENV（默认 13）。
+prepare:
+  stage: prepare
+  image: ${PLAYWRIGHT_IMAGE}
+  script:
+    - |
+      if [ "${CI_PIPELINE_SOURCE}" = "schedule" ]; then
+        test_env="${SCHEDULE_TEST_ENV:-13}"
+      else
+        case "${CI_COMMIT_BRANCH}" in
+          13) test_env="13" ;;
+          14) test_env="14" ;;
+          im) test_env="im" ;;
+          *) test_env="13" ;;
+        esac
+      fi
+    - echo "TEST_ENV=$test_env" > deploy.env
+    - cat deploy.env
+  artifacts:
+    reports:
+      dotenv: deploy.env
+
+.install: &install
+  - corepack enable
+  - corepack prepare pnpm@${PNPM_VERSION} --activate
+  - pnpm install --frozen-lockfile
+
+# 接口自动化：每次都跑，是最低红线。
+test-api:
+  stage: test
+  image: ${PLAYWRIGHT_IMAGE}
+  needs:
+    - job: prepare
+      artifacts: true
+  script:
+    - *install
+    # 串行执行：被测环境 WAF 会拦截并发突发请求
+    - pnpm exec playwright test --project=api --workers=1
+  artifacts:
+    when: always
+    paths:
+      - reports/
+    reports:
+      junit: reports/junit.xml
+    expire_in: 1 week
+
+# E2E：仅在分支 13/14/im 与 schedule 跑（依赖可访问站点 + 浏览器），失败不阻断主流程。
+test-e2e:
+  stage: test
+  image: ${PLAYWRIGHT_IMAGE}
+  needs:
+    - job: prepare
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  allow_failure: true
+  script:
+    - *install
+    - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
+  artifacts:
+    when: always
+    paths:
+      - reports/
+    reports:
+      junit: reports/junit.xml
+    expire_in: 1 week
+
+# 汇总：发布 HTML 报告为 GitLab Pages 制品（可在流水线制品中下载查看）。
+pages:
+  stage: report
+  image: ${PLAYWRIGHT_IMAGE}
+  needs:
+    - job: test-api
+      artifacts: true
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
+  script:
+    - mkdir -p public
+    - cp -r reports/html/* public/ 2>/dev/null || echo "no html report"
+  artifacts:
+    paths:
+      - public
+    expire_in: 1 week
