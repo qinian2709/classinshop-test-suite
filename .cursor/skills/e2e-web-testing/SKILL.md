@@ -68,6 +68,26 @@ await expect(page).not.toHaveURL(listUrl);
 
 Use shorter assertion timeouts for expected-fast UI state, typically `5_000`, instead of waiting for the global `expect` timeout when a missing element should fail quickly.
 
+When a text may appear in multiple UI regions, avoid broad `getByText` assertions. This is common in Web UI pages where menu entries, table cells, tags, buttons, and dialog content reuse the same Chinese text. Broad text locators increase false positives and can fail in Playwright strict mode when live data changes.
+
+Bad:
+
+```ts
+await expect(page.getByText('进入店铺'), '应展示进入店铺按钮').toBeVisible();
+await expect(page.getByText('待上架'), '商品列表应展示待上架状态').toBeVisible();
+```
+
+Good:
+
+```ts
+await expect(page.getByRole('button', { name: '进入店铺' }), '应展示进入店铺按钮').toBeVisible();
+
+const goodsRow = page.getByRole('row', { name: /自动化商品/ });
+await expect(goodsRow.getByText('待上架', { exact: true }), '商品行应展示待上架状态').toBeVisible();
+```
+
+Use `.first()` or `.nth()` only when the order is itself the business assertion or the list has already been narrowed by unique data. Do not use them merely to silence strict mode.
+
 ## Page Objects
 
 Put selectors and page actions in `tests/e2e-web/pages/**`.

@@ -45,6 +45,7 @@ The fixture reads credentials from `@config`:
 
 - `TEST_TOKEN` is preferred.
 - `TEST_TOKEN` may be either a raw JWT or a complete `Bearer xxx` value. Use `formatAuthorizationHeader()` from `@config` when building headers manually.
+- `MOBILE_TEST_TOKEN` is a separate H5/C-end user token. Use it only when the API scenario explicitly exercises C-end buyer behavior such as mobile coupon receive, user coupon list, or mobile order flows. Do not mix it with merchant/admin `TEST_TOKEN`.
 - Sign-login credentials are supported by `getAccessToken`.
 - Missing auth credentials should skip dependent tests instead of failing the whole suite.
 

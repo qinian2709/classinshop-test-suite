@@ -56,6 +56,12 @@ Required mobile values:
 
 Do not use `TEST_TOKEN` for mobile C-end login unless the scenario explicitly uses the merchant/admin account as the buyer. For mobile UI tests, prefer `accounts.mobileToken`.
 
+## API Setup In UI Specs
+
+Mobile UI specs may use API calls to prepare or discover data, for example resolving a published `goodsId`, creating a test coupon, or cleaning up a received coupon code. Keep those calls in shared helpers and treat them as setup/teardown, not as the report focus.
+
+Do not attach verbose request/response logs to H5 UI reports by default. UI reports should primarily show business steps, assertions, screenshots, trace, and failure artifacts. Attach API logs only when debugging a failing setup path or when the scenario is intentionally API-heavy.
+
 ## Screenshots
 
 Playwright keeps screenshots on failure by default. `E2E_STEP_SCREENSHOTS=1` is an additional switch for attaching screenshots after each important UI step; keep it `0` for normal runs and set it to `1` when the user needs visual verification for every step.
