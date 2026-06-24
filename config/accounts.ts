@@ -17,8 +17,6 @@ export interface Accounts {
   token: string;
   /** H5/C 端用户 accessToken，用于与商家后台 token 分离的场景。 */
   mobileToken: string;
-  /** 前端登录态注入字段，对应浏览器 localStorage.authorization。 */
-  authorization: string;
   /** 签名登录凭据，token 为空时使用。 */
   sign: SignCredential;
   /** E2E UI 登录账号（如站点支持账号密码）。 */
@@ -31,7 +29,6 @@ export interface Accounts {
 export const accounts: Accounts = {
   token: get('TEST_TOKEN'),
   mobileToken: get('MOBILE_TEST_TOKEN', get('C_END_TEST_TOKEN')),
-  authorization: get('authorization', get('TEST_TOKEN')),
   sign: {
     eeoUid: get('TEST_EEO_UID'),
     signKey: get('TEST_SIGN_KEY'),

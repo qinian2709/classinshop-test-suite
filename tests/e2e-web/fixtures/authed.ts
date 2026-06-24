@@ -10,13 +10,13 @@ interface AuthedFixtures {
 
 export const test = base.extend<AuthedFixtures>({
   authedShopList: async ({ page }, use, testInfo) => {
-    test.skip(!accounts.authorization, '未配置 authorization，跳过需登录态注入的用例');
+    test.skip(!accounts.token, '未配置 TEST_TOKEN，跳过需登录态注入的用例');
     test.skip(!env.shopHost, '未配置 SHOP_HOST，跳过 PC 后台店铺入口用例');
 
-    await installClassInAuth(page, accounts.authorization);
+    await installClassInAuth(page, accounts.token);
     await page.goto(env.shopHost, { waitUntil: 'domcontentloaded' });
 
-    const authBootstrap = await bootstrapClassInAuth(page, accounts.authorization, env.apiBaseURL);
+    const authBootstrap = await bootstrapClassInAuth(page, accounts.token, env.apiBaseURL);
     await testInfo.attach('登录态注入日志.json', {
       contentType: 'application/json',
       body: JSON.stringify(authBootstrap, null, 2),

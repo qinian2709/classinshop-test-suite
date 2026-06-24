@@ -46,7 +46,7 @@ Environment files are selected by `TEST_ENV` / `--env`:
 - `--env 14` loads `.env.local`, `.env.14`, `.env`
 - `--env im` loads `.env.local`, `.env.im`, `.env`
 
-Use `env.shopHost`, `env.webBaseURL`, `env.apiBaseURL`, and `accounts.authorization` from `@config`. Do not hardcode environment domains, tokens, or hostnames in E2E specs.
+Use `env.shopHost`, `env.webBaseURL`, `env.apiBaseURL`, and `accounts.token` from `@config`. Do not hardcode environment domains, tokens, or hostnames in E2E specs.
 
 ## Assertions
 
