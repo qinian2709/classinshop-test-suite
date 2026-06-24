@@ -1,4 +1,5 @@
 /** 测试账号与凭据集中管理。真实值通过 .env.local 注入，源码中不出现明文。 */
+import './env.js';
 
 function get(key: string, fallback = ''): string {
   return (process.env[key] ?? fallback).trim();

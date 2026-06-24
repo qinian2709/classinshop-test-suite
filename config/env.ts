@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 export type EnvName = '13' | '14' | 'im';
 
-const ROOT = process.cwd();
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** 被测环境，默认 13，可用 TEST_ENV=14 pnpm test:api 切换。 */
 export const TEST_ENV: EnvName = ((): EnvName => {
@@ -18,12 +19,21 @@ export const TEST_ENV: EnvName = ((): EnvName => {
 for (const file of ['.env.local', `.env.${TEST_ENV}`, '.env']) {
   const full = path.join(ROOT, file);
   if (fs.existsSync(full)) {
-    dotenv.config({ path: full, override: false });
+    const parsed = dotenv.parse(fs.readFileSync(full));
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!(process.env[key] ?? '').trim()) {
+        process.env[key] = value;
+      }
+    }
   }
 }
 
 function get(key: string, fallback = ''): string {
   return (process.env[key] ?? fallback).trim();
+}
+
+function getBoolean(key: string): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(get(key).toLowerCase());
 }
 
 function required(key: string): string {
@@ -54,6 +64,8 @@ export interface EnvConfig {
   webBaseURL: string;
   /** H5 E2E 基础地址 */
   mobileBaseURL: string;
+  /** E2E 关键步骤截图开关 */
+  e2eStepScreenshots: boolean;
 }
 
 export const env: EnvConfig = {
@@ -67,4 +79,5 @@ export const env: EnvConfig = {
   shopId: get('SHOP_ID'),
   webBaseURL: get('WEB_BASE_URL', get('SHOP_HOST')),
   mobileBaseURL: get('MOBILE_BASE_URL', get('SHOP_DOMAIN')),
+  e2eStepScreenshots: getBoolean('E2E_STEP_SCREENSHOTS'),
 };
