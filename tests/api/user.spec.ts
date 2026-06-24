@@ -35,13 +35,20 @@ test.describe('用户中心', () => {
     expect(body.code).toBe(SUCCESS_CODE);
   });
 
-  test('GET /merchant/status 返回商户状态', async ({ api }) => {
-    const orgId = configEnv.shopId || (await api.expectData<MerchantShop[]>('get', Endpoints.user.myShops))[0]?.orgId;
+  test('GET /merchant/status 缺少 orgId 应返回参数错误', async ({ api }) => {
+    // GetMerchantStatus 要求 query.orgId，缺失/非法时返回 ErrBadRequest(400)
+    const { body } = await api.get(Endpoints.merchant.status);
+    expect(body.code).not.toBe(SUCCESS_CODE);
+  });
+
+  test('GET /merchant/status?orgId=... 返回商户状态', async ({ api }) => {
+    const orgId =
+      process.env.TEST_ORG_ID ||
+      configEnv.shopId ||
+      (await api.expectData<MerchantShop[]>('get', Endpoints.user.myShops))[0]?.orgId;
     test.skip(!orgId, '当前账号没有可用于查询商户状态的店铺 orgId');
 
-    const { body } = await api.get(Endpoints.merchant.status, {
-      query: { orgId },
-    });
+    const { body } = await api.get(Endpoints.merchant.status, { query: { orgId } });
     expect(body.code).toBe(SUCCESS_CODE);
   });
 });

@@ -7,16 +7,7 @@ export type EnvName = '13' | '14' | 'im';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** 被测环境，默认 13，可用 TEST_ENV=14 pnpm test:api 切换。 */
-export const TEST_ENV: EnvName = ((): EnvName => {
-  const raw = (process.env.TEST_ENV ?? '13').trim();
-  if (raw === '13' || raw === '14' || raw === 'im') return raw;
-  throw new Error(`非法 TEST_ENV=${raw}，仅支持 13 | 14 | im`);
-})();
-
-// 加载顺序：先 .env.local（含真实凭据，不提交），再 .env.<env>（仅域名）。
-// 已存在的变量不被覆盖，因此 .env.local 优先级最高，shell 显式传参优先级再高。
-for (const file of ['.env.local', `.env.${TEST_ENV}`, '.env']) {
+function loadEnvFile(file: string): void {
   const full = path.join(ROOT, file);
   if (fs.existsSync(full)) {
     const parsed = dotenv.parse(fs.readFileSync(full));
@@ -27,6 +18,20 @@ for (const file of ['.env.local', `.env.${TEST_ENV}`, '.env']) {
     }
   }
 }
+
+// 先加载 .env.local（含真实凭据，可选地设置 TEST_ENV），再据此决定环境域名文件。
+loadEnvFile('.env.local');
+
+/** 被测环境，默认 13。可用 shell 传参 TEST_ENV=14，或在 .env.local 写 TEST_ENV=14。 */
+export const TEST_ENV: EnvName = ((): EnvName => {
+  const raw = (process.env.TEST_ENV ?? '13').trim();
+  if (raw === '13' || raw === '14' || raw === 'im') return raw;
+  throw new Error(`非法 TEST_ENV=${raw}，仅支持 13 | 14 | im`);
+})();
+
+// 再加载对应环境的域名文件与通用 .env。空字符串视为未配置，允许环境文件补齐。
+loadEnvFile(`.env.${TEST_ENV}`);
+loadEnvFile('.env');
 
 function get(key: string, fallback = ''): string {
   return (process.env[key] ?? fallback).trim();

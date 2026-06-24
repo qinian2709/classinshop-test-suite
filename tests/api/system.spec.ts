@@ -1,5 +1,5 @@
 import { test, expect } from '@shared';
-import { Endpoints, SUCCESS_CODE } from '@shared';
+import { Endpoints, SUCCESS_CODE, ERR_SYSTEM_PARAM } from '@shared';
 
 interface AgreementSummary {
   type: string;
@@ -18,7 +18,13 @@ test.describe('系统公开接口 @smoke', () => {
     expect(body.code).toBe(SUCCESS_CODE);
   });
 
-  test('GET /system/agreement 返回协议内容', async ({ anonApi }) => {
+  test('GET /system/agreement 缺少 type 参数应返回参数错误', async ({ anonApi }) => {
+    // GetSystemAgreement 要求 query.type，缺失时返回 ErrSystemParam。
+    const { body } = await anonApi.get(Endpoints.system.agreement);
+    expect(body.code).toBe(ERR_SYSTEM_PARAM);
+  });
+
+  test('GET /system/agreement?type=... 返回协议内容', async ({ anonApi }) => {
     const { body: listBody } = await anonApi.get<AgreementSummary[]>(Endpoints.system.agreementList);
     expect(listBody.code).toBe(SUCCESS_CODE);
     expect(Array.isArray(listBody.data)).toBe(true);

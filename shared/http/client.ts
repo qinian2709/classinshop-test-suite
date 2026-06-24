@@ -1,5 +1,6 @@
 import { env, formatAuthorizationHeader } from '../../config/index.js';
 import { createLogger } from '../utils/logger.js';
+import { browserHeaders } from './browser-headers.js';
 import type { ApiResponse } from './types.js';
 import { SUCCESS_CODE } from './types.js';
 
@@ -59,6 +60,7 @@ export class ApiClient {
   private buildHeaders(opts: RequestOptions): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      ...browserHeaders(),
       ...this.defaultHeaders,
       ...opts.headers,
     };

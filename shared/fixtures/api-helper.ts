@@ -7,48 +7,41 @@ export interface CallOptions {
   headers?: Record<string, string>;
 }
 
-interface RawApiResponse {
-  status(): number;
-  text(): Promise<string>;
-  json<T = any>(): Promise<T>;
+export type HttpMethod = 'get' | 'post' | 'put' | 'delete';
+
+/** raw() 的返回适配器，兼容此前基于 Playwright APIResponse 的用法（status() / json() / text()）。 */
+export interface RawResponse {
+  status: () => number;
+  // 默认 any，便于在只读断言里直接访问 .code 等字段（与此前 Playwright APIResponse 用法一致）。
+  json: <T = any>() => Promise<T>;
+  text: () => Promise<string>;
 }
 
 /**
- * 基于 fetch 的接口助手：自动解析统一信封 {code,msg,data}，
- * 提供原始响应与业务断言两种粒度。鉴权头在创建 context 时统一注入。
- *
- * 14 环境网关对 APIRequestContext 的请求形态较敏感，fetch 更接近前端真实请求。
+ * 基于 Node 原生 fetch（undici）的接口助手：默认 keep-alive 复用连接，避免被测环境 WAF
+ * 对"高频新建连接"的拦截（Playwright APIRequestContext 在 test runner 下会每请求新建连接，
+ * 触发 403）。自动解析统一信封 {code,msg,data}，提供原始响应与业务断言两种粒度。
  */
 export class ApiHelper {
   constructor(
     private readonly baseURL: string,
-    private readonly extraHTTPHeaders: Record<string, string> = {},
+    private readonly defaultHeaders: Record<string, string> = {},
   ) {}
 
-  private toParams(
-    query?: CallOptions['query'],
-  ): Record<string, string | number | boolean> | undefined {
-    if (!query) return undefined;
-    const params: Record<string, string | number | boolean> = {};
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined) params[k] = v;
-    }
-    return params;
-  }
-
   private buildUrl(path: string, query?: CallOptions['query']): string {
-    const url = new URL(`${this.baseURL}${path}`);
-    const params = this.toParams(query);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        url.searchParams.set(key, String(value));
+    const url = new URL(
+      `${this.baseURL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`,
+    );
+    if (query) {
+      for (const [k, v] of Object.entries(query)) {
+        if (v !== undefined) url.searchParams.set(k, String(v));
       }
     }
     return url.toString();
   }
 
   private mergeHeaders(headers?: Record<string, string>, hasBody = false): Record<string, string> {
-    const merged: Record<string, string> = { ...this.extraHTTPHeaders };
+    const merged: Record<string, string> = { ...this.defaultHeaders };
     if (hasBody) merged['content-type'] = 'application/json';
 
     for (const [key, value] of Object.entries(headers ?? {})) {
@@ -62,32 +55,34 @@ export class ApiHelper {
     return merged;
   }
 
-  async raw(
-    method: 'get' | 'post' | 'put' | 'delete',
-    path: string,
-    opts: CallOptions = {},
-  ): Promise<RawApiResponse> {
+  private async send(method: HttpMethod, path: string, opts: CallOptions): Promise<Response> {
     const hasBody = opts.data !== undefined;
-    const response = await fetch(this.buildUrl(path, opts.query), {
+    return fetch(this.buildUrl(path, opts.query), {
       method: method.toUpperCase(),
       headers: this.mergeHeaders(opts.headers, hasBody),
       body: hasBody ? JSON.stringify(opts.data) : undefined,
     });
+  }
+
+  /** 原始响应（适配器形式），用于只关心 HTTP 状态/原文的断言。 */
+  async raw(method: HttpMethod, path: string, opts: CallOptions = {}): Promise<RawResponse> {
+    const res = await this.send(method, path, opts);
+    const text = await res.text();
 
     return {
-      status: () => response.status,
-      text: () => response.text(),
-      json: () => response.json(),
+      status: () => res.status,
+      json: async <T = any>() => JSON.parse(text) as T,
+      text: async () => text,
     };
   }
 
   async call<T = unknown>(
-    method: 'get' | 'post' | 'put' | 'delete',
+    method: HttpMethod,
     path: string,
     opts: CallOptions = {},
   ): Promise<{ status: number; body: ApiResponse<T> }> {
-    const res = await this.raw(method, path, opts);
-    const status = res.status();
+    const res = await this.send(method, path, opts);
+    const status = res.status;
     const text = await res.text();
     let body: ApiResponse<T>;
     try {
@@ -118,7 +113,7 @@ export class ApiHelper {
 
   /** 请求并断言业务成功（code===0），返回 data。 */
   async expectData<T = unknown>(
-    method: 'get' | 'post' | 'put' | 'delete',
+    method: HttpMethod,
     path: string,
     opts: CallOptions = {},
   ): Promise<T> {

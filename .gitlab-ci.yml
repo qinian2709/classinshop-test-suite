@@ -62,7 +62,8 @@ test-api:
       artifacts: true
   script:
     - *install
-    - pnpm exec playwright test --project=api
+    # 串行执行：被测环境 WAF 会拦截并发突发请求
+    - pnpm exec playwright test --project=api --workers=1
   artifacts:
     when: always
     paths:
