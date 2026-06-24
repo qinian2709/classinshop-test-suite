@@ -51,12 +51,15 @@ export interface Coupon {
 
 export interface Address {
   id: number;
-  name: string;
-  phone: string;
+  receiverName: string;
+  receiverPhone: string;
   province?: string;
+  provinceCode?: string;
   city?: string;
+  cityCode?: string;
   district?: string;
-  detail?: string;
+  districtCode?: string;
+  detailAddress?: string;
   isDefault?: boolean;
 }
 

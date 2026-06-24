@@ -1,6 +1,10 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE } from '@shared';
 
+interface AgreementSummary {
+  type: string;
+}
+
 /**
  * 系统级公开接口冒烟：不需要登录，验证服务可达与统一信封格式。
  * 这是整套接口自动化的"健康基线"，CI 每次都应通过。
@@ -15,7 +19,16 @@ test.describe('系统公开接口 @smoke', () => {
   });
 
   test('GET /system/agreement 返回协议内容', async ({ anonApi }) => {
-    const { body } = await anonApi.get(Endpoints.system.agreement);
+    const { body: listBody } = await anonApi.get<AgreementSummary[]>(Endpoints.system.agreementList);
+    expect(listBody.code).toBe(SUCCESS_CODE);
+    expect(Array.isArray(listBody.data)).toBe(true);
+
+    const agreementType = listBody.data[0]?.type;
+    test.skip(!agreementType, '当前环境没有系统协议列表数据，跳过协议详情校验');
+
+    const { body } = await anonApi.get(Endpoints.system.agreement, {
+      query: { type: agreementType, lang: 'zh-CN', platform: 4 },
+    });
     expect(body.code).toBe(SUCCESS_CODE);
   });
 

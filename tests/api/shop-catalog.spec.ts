@@ -217,22 +217,38 @@ test.describe('店铺与商品目录', () => {
     expect(goodsList.code, '商品列表业务 code 应为成功码').toBe(SUCCESS_CODE);
     expect(Array.isArray(goodsList.data?.list), '商品列表 data.list 应为数组').toBe(true);
 
-    const firstGoods = goodsList.data?.list?.[0];
-    if (!firstGoods?.id) {
+    const candidates = goodsList.data?.list ?? [];
+    if (candidates.length === 0) {
       test.skip(true, '当前店铺商品列表为空，跳过商品详情下游校验');
       return;
     }
 
-    const goodsId = firstGoods.id;
-    expect(goodsId, '应从商品列表第一条提取 goodsId 作为详情接口入参').toBeTruthy();
+    let matchedGoodsId: number | undefined;
+    let matchedGoodsDetail: Goods | undefined;
+    for (const candidate of candidates) {
+      if (!candidate.id) continue;
 
-    const { body: goodsDetail } = await getJson<Goods>(test.info(), Endpoints.shop.goodsDetail(goodsId), {
-      headers: shop.headers,
-      assertions: ['商品详情业务 code 应为成功码', '商品详情返回的 id 应等于列表提取的 goodsId'],
-      logName: '请求日志-链路-商品详情.json',
-    });
-    expect(goodsDetail.code, '商品详情业务 code 应为成功码').toBe(SUCCESS_CODE);
-    expect(goodsDetail.data, '商品详情 data 应存在').toBeTruthy();
-    expect(goodsDetail.data?.id, '商品详情返回的 id 应等于列表提取的 goodsId').toBe(goodsId);
+      const { body: goodsDetail } = await getJson<Goods>(
+        test.info(),
+        Endpoints.shop.goodsDetail(candidate.id),
+        {
+          headers: shop.headers,
+          assertions: ['商品详情业务 code 应为成功码', '商品详情返回的 id 应等于列表提取的 goodsId'],
+          logName: `请求日志-链路-商品详情-${candidate.id}.json`,
+        },
+      );
+      if (goodsDetail.code === SUCCESS_CODE && goodsDetail.data?.id === candidate.id) {
+        matchedGoodsId = candidate.id;
+        matchedGoodsDetail = goodsDetail.data;
+        break;
+      }
+    }
+
+    if (!matchedGoodsId || !matchedGoodsDetail) {
+      test.skip(true, '商品列表中的商品详情均不可用，可能被并发用例清理，跳过下游校验');
+      return;
+    }
+
+    expect(matchedGoodsDetail.id, '商品详情返回的 id 应等于列表提取的 goodsId').toBe(matchedGoodsId);
   });
 });

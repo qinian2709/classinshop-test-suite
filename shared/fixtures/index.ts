@@ -1,5 +1,4 @@
-import { test as base, request as playwrightRequest, expect } from '@playwright/test';
-import type { APIRequestContext } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import { env, accounts, formatAuthorizationHeader, hasApiCredential } from '../../config/index.js';
 import { getAccessToken } from '../auth/login.js';
 import { DataRegistry } from '../data/cleanup.js';
@@ -53,27 +52,17 @@ export const test = base.extend<ApiFixtures>({
   },
 
   anonApi: async ({}, use) => {
-    const ctx: APIRequestContext = await playwrightRequest.newContext({
-      baseURL: env.apiBaseURL,
-      ignoreHTTPSErrors: true,
-      extraHTTPHeaders: { ...browserLikeHeaders(), ...shopHeaders() },
-    });
-    await use(new ApiHelper(ctx));
-    await ctx.dispose();
+    await use(new ApiHelper(env.apiBaseURL, { ...browserLikeHeaders(), ...shopHeaders() }));
   },
 
   api: async ({ token }, use) => {
-    const ctx: APIRequestContext = await playwrightRequest.newContext({
-      baseURL: env.apiBaseURL,
-      ignoreHTTPSErrors: true,
-      extraHTTPHeaders: {
+    await use(
+      new ApiHelper(env.apiBaseURL, {
         ...browserLikeHeaders(),
-        Authorization: formatAuthorizationHeader(token),
+        authorization: formatAuthorizationHeader(token),
         ...shopHeaders(),
-      },
-    });
-    await use(new ApiHelper(ctx));
-    await ctx.dispose();
+      }),
+    );
   },
 
   data: async ({}, use) => {

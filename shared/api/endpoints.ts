@@ -30,8 +30,10 @@ export const Endpoints = {
     decoration: '/shop/decoration',
     goodsList: '/shop/goods',
     goodsDetail: (id: string | number) => `/shop/goods/${id}`,
+    couponDetail: (id: string | number) => `/shop/coupon/${id}`,
     availableCoupons: '/shop/coupon/available',
     receiveCoupon: (id: string | number) => `/shop/coupon/${id}/receive`,
+    userCouponList: '/shop/user/coupon/list',
     orderCreate: '/shop/goods/order/create',
     orderCalculate: '/shop/goods/order/calculate',
   },
@@ -66,5 +68,11 @@ export const Endpoints = {
       `/shop/${shopId}/goods/${goodsId}`,
     goodsList: (shopId: string | number) => `/shop/${shopId}/goods/list`,
     appointmentTeachers: (shopId: string | number) => `/shop/${shopId}/appointment/teachers`,
+    couponCreate: (shopId: string | number) => `/shop/${shopId}/coupon/create`,
+    couponDetail: (shopId: string | number, couponId: string | number) =>
+      `/shop/${shopId}/coupon/${couponId}`,
+    couponList: (shopId: string | number) => `/shop/${shopId}/coupon/list`,
+    couponStatus: (shopId: string | number) => `/shop/${shopId}/coupon/status`,
+    couponCodeVoid: (shopId: string | number) => `/shop/${shopId}/coupon/code/void`,
   },
 } as const;

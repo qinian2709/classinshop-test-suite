@@ -1,6 +1,11 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE } from '@shared';
+import { env as configEnv } from '@config';
 import type { ListData, User } from '@shared';
+
+interface MerchantShop {
+  orgId: number;
+}
 
 /**
  * 用户中心（需登录）：依赖 token fixture（无凭据则整组跳过）。
@@ -31,7 +36,12 @@ test.describe('用户中心', () => {
   });
 
   test('GET /merchant/status 返回商户状态', async ({ api }) => {
-    const { body } = await api.get(Endpoints.merchant.status);
+    const orgId = configEnv.shopId || (await api.expectData<MerchantShop[]>('get', Endpoints.user.myShops))[0]?.orgId;
+    test.skip(!orgId, '当前账号没有可用于查询商户状态的店铺 orgId');
+
+    const { body } = await api.get(Endpoints.merchant.status, {
+      query: { orgId },
+    });
     expect(body.code).toBe(SUCCESS_CODE);
   });
 });
