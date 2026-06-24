@@ -24,7 +24,7 @@ Use fixtures from `shared/fixtures/index.ts`:
 
 - `env`: current environment config.
 - `anonApi`: anonymous API helper, no login token.
-- `api`: authenticated API helper, injects `Authorization: Bearer <token>`.
+- `api`: authenticated API helper, injects `Authorization` from `TEST_TOKEN`.
 - `token`: raw access token when direct custom requests are needed.
 - `data`: test data cleanup registry.
 
@@ -44,10 +44,36 @@ test('GET /auth/user 返回当前登录用户', async ({ api }) => {
 The fixture reads credentials from `@config`:
 
 - `TEST_TOKEN` is preferred.
+- `TEST_TOKEN` may be either a raw JWT or a complete `Bearer xxx` value. Use `formatAuthorizationHeader()` from `@config` when building headers manually.
 - Sign-login credentials are supported by `getAccessToken`.
 - Missing auth credentials should skip dependent tests instead of failing the whole suite.
 
 Do not hardcode tokens, cookies, or secrets in specs. Do not require cookies when `TEST_TOKEN` is sufficient.
+
+## Browser-Like Gateway Requests
+
+Some 14-env APIs are protected before they reach the Go JSON handler. If a request returns HTML `403 Forbidden` instead of the unified `{ code, msg, data }` response, compare it with `tests/api/api-demo.spec.ts` before changing assertions.
+
+Known pitfall:
+
+- `/user/shops` succeeds with browser-like `fetch` headers (`accept`, `origin`, `referer`, `sec-fetch-*`, `user-agent`, `Authorization`) but may be blocked when called through a bare `APIRequestContext`.
+- In that case, reproduce the browser request shape first. Keep the code typed, redact credentials in attachments, and prefer extracting a reusable helper once more than one spec needs it.
+- Do not treat HTML `403` as a business unauthorized response. Business auth failures should be JSON with `code=401`; HTML `403` usually means gateway/header/domain mismatch.
+
+When manually constructing browser-like headers:
+
+```ts
+import { accounts, env, formatAuthorizationHeader } from '@config';
+
+const headers = {
+  accept: 'application/json, text/plain, */*',
+  authorization: formatAuthorizationHeader(accounts.token),
+  origin: env.shopHost,
+  referer: `${env.shopHost}/`,
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-site': 'same-site',
+};
+```
 
 ## Environment Variables
 
@@ -60,6 +86,12 @@ Environment files are selected by `TEST_ENV` / `--env`:
 - `--env im` loads `.env.local`, `.env.im`, `.env`
 
 Use `env.apiBaseURL`, `env.shopHost`, `env.shopDomain`, and `env.shopId` as appropriate. Avoid hardcoded hosts and raw endpoint strings.
+
+Do not confuse `SHOP_ID` and `SHOP_DOMAIN`:
+
+- `SHOP_ID` is the numeric PC-admin shop ID, e.g. the `18537` in `https://shop14.eeo.im/shop/18537`; use it for `/shop/:shopId/...` routes or for selecting a shop from `/user/shops`.
+- `SHOP_DOMAIN` is the C-end shop domain used by `X-Shop-Domain`, usually like `https://xxx.shop14.eeo.im`. The backend parses the host prefix, not the `/shop/:id` path.
+- If only `SHOP_ID` is known, derive the C-end domain through upstream APIs: `GET /user/shops -> orgId`, then `GET /org/:orgId/detail -> shopDomain`, then pass that `shopDomain` as `X-Shop-Domain`.
 
 ## Endpoints
 
@@ -129,6 +161,15 @@ Use the `data` fixture for test-created data that needs cleanup. Do not leave cr
 
 Prefer stable read-only smoke tests unless the scenario requires mutation.
 
+For multi-step scenarios, write the dependency chain in the spec comment and extract fields explicitly. Example:
+
+- `GET /user/shops` extracts `orgId`.
+- `GET /org/:orgId/detail` extracts `shopDomain`.
+- `GET /shop/goods` extracts `goodsId`.
+- `GET /shop/goods/:goodsId` validates downstream detail data.
+
+Do not write payment success scenarios unless a test payment sandbox or callback simulation is available. For payment-related areas, prefer read-only status checks, parameter validation, or explicitly skipped opt-in tests with documented prerequisites.
+
 ## Reports
 
 Use meaningful test titles and annotation/attachment names. Reports are read by humans and may be sent to WeCom later.
@@ -162,6 +203,10 @@ pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify
 Before finishing an API test change:
 
 - Authenticated tests use `api`/`token` fixtures instead of duplicating auth logic.
+- Manual headers use `formatAuthorizationHeader()` and never print the token.
+- HTML `403` is diagnosed as gateway/header/domain mismatch before changing business assertions.
+- `SHOP_ID` and `SHOP_DOMAIN` are not mixed; derive `shopDomain` from upstream APIs when needed.
+- Multi-step scenarios document upstream/downstream field extraction.
 - Public tests use `anonApi`.
 - Environment values come from `@config`.
 - Endpoints use `Endpoints`.

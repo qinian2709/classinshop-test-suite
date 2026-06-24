@@ -1,6 +1,6 @@
 import { test as base, request as playwrightRequest, expect } from '@playwright/test';
 import type { APIRequestContext } from '@playwright/test';
-import { env, accounts, hasApiCredential } from '../../config/index.js';
+import { env, accounts, formatAuthorizationHeader, hasApiCredential } from '../../config/index.js';
 import { getAccessToken } from '../auth/login.js';
 import { DataRegistry } from '../data/cleanup.js';
 import { ApiHelper } from './api-helper.js';
@@ -22,6 +22,22 @@ function shopHeaders(): Record<string, string> {
   return env.shopDomain ? { 'X-Shop-Domain': env.shopDomain } : {};
 }
 
+function browserLikeHeaders(): Record<string, string> {
+  return {
+    accept: 'application/json, text/plain, */*',
+    'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+    'cache-control': 'no-cache',
+    origin: env.shopHost,
+    pragma: 'no-cache',
+    referer: `${env.shopHost}/`,
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-site',
+    'user-agent':
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+  };
+}
+
 export const test = base.extend<ApiFixtures>({
   env: async ({}, use) => {
     await use(env);
@@ -40,7 +56,7 @@ export const test = base.extend<ApiFixtures>({
     const ctx: APIRequestContext = await playwrightRequest.newContext({
       baseURL: env.apiBaseURL,
       ignoreHTTPSErrors: true,
-      extraHTTPHeaders: { 'Content-Type': 'application/json', ...shopHeaders() },
+      extraHTTPHeaders: { ...browserLikeHeaders(), ...shopHeaders() },
     });
     await use(new ApiHelper(ctx));
     await ctx.dispose();
@@ -51,8 +67,8 @@ export const test = base.extend<ApiFixtures>({
       baseURL: env.apiBaseURL,
       ignoreHTTPSErrors: true,
       extraHTTPHeaders: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...browserLikeHeaders(),
+        Authorization: formatAuthorizationHeader(token),
         ...shopHeaders(),
       },
     });

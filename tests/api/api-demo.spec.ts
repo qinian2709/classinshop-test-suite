@@ -1,6 +1,6 @@
 import { test, expect } from '@shared';
 import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
-import { accounts } from '@config';
+import { accounts, formatAuthorizationHeader } from '@config';
 
 interface ShopSummary {
   id?: number;
@@ -36,7 +36,7 @@ test.describe('API Demo：14 环境我的店铺接口 @smoke', () => {
     };
     const actualHeaders = {
       ...requestHeaders,
-      authorization: accounts.token,
+      authorization: formatAuthorizationHeader(accounts.token),
     };
     const response = await fetch(url, {
       method: 'GET',

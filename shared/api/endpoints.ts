@@ -8,6 +8,8 @@ export const Endpoints = {
     agreement: '/system/agreement',
     agreementList: '/system/agreement/list',
     sendCode: '/system/sendcode',
+    cosSign: '/system/cos/sign',
+    cosDownloadSign: '/system/cos/download/sign',
   },
   user: {
     loginBySign: '/user/loginbysign',
@@ -36,6 +38,9 @@ export const Endpoints = {
   org: {
     detail: (orgId: string | number) => `/org/${orgId}/detail`,
   },
+  classin: {
+    classList: (agencyId: string | number) => `/classin/class/${agencyId}`,
+  },
   goods: {
     detail: (id: string | number) => `/goods/${id}`,
     orderCreate: '/goods/order/create',
@@ -51,5 +56,15 @@ export const Endpoints = {
   },
   merchant: {
     status: '/merchant/status',
+  },
+  shopAdmin: {
+    goodsCreate: (shopId: string | number) => `/shop/${shopId}/goods/create`,
+    goodsUpdate: (shopId: string | number) => `/shop/${shopId}/goods/update`,
+    goodsStatus: (shopId: string | number) => `/shop/${shopId}/goods/status`,
+    goodsDelete: (shopId: string | number) => `/shop/${shopId}/goods/delete`,
+    goodsDetail: (shopId: string | number, goodsId: string | number) =>
+      `/shop/${shopId}/goods/${goodsId}`,
+    goodsList: (shopId: string | number) => `/shop/${shopId}/goods/list`,
+    appointmentTeachers: (shopId: string | number) => `/shop/${shopId}/appointment/teachers`,
   },
 } as const;

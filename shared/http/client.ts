@@ -1,4 +1,4 @@
-import { env } from '../../config/index.js';
+import { env, formatAuthorizationHeader } from '../../config/index.js';
 import { createLogger } from '../utils/logger.js';
 import type { ApiResponse } from './types.js';
 import { SUCCESS_CODE } from './types.js';
@@ -64,7 +64,7 @@ export class ApiClient {
     };
     if (this.shopDomain) headers['X-Shop-Domain'] = this.shopDomain;
     const token = opts.token === null ? '' : (opts.token ?? this.token);
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (token) headers.Authorization = formatAuthorizationHeader(token);
     return headers;
   }
 

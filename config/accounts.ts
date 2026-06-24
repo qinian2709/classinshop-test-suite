@@ -47,3 +47,7 @@ export function hasApiCredential(): boolean {
   const { eeoUid, signKey, timestamp } = accounts.sign;
   return Boolean(eeoUid && signKey && timestamp);
 }
+
+export function formatAuthorizationHeader(token: string): string {
+  return token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+}
