@@ -75,28 +75,37 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 
 ## 6. 小程序自动化
 
-仅本地运行，步骤：
+小程序自动化仅本地运行：Playwright 配置只有在 `RUN_MP=1` 且非 CI 时才注册 `miniprogram-user` / `miniprogram-teacher` 项目；统一 runner 在 `CI=true` 时会直接拒绝执行小程序项目，避免进入流水线。
+
+本地运行步骤：
 
 1. 在微信开发者工具中开启 **设置 → 安全设置 → 服务端口（CLI/HTTP 调用）**。
-2. 在对应小程序项目编译出 mp-weixin 产物：
+2. 如需单独准备小程序产物，可在 test-suite 中执行：
    ```bash
-   # 用户端
-   cd ../classinshop-miniprogram && pnpm build:mp-weixin
-   # 教师端
-   cd ../classinshop-teacher-miniprogram && pnpm build:mp-weixin
+   pnpm prepare:mp          # 用户端 + 教师端
+   pnpm prepare:mp:user     # 仅用户端
+   pnpm prepare:mp:teacher  # 仅教师端
    ```
-3. 在 `.env.local` 配置：
+   正常运行 `pnpm test:mp` 时会自动执行准备步骤，不需要手工提前编译。
+3. 如安装在非默认路径，可在 `.env.local` 配置：
    ```
    WX_DEVTOOLS_CLI=/Applications/wechatwebdevtools.app/Contents/MacOS/cli
    MP_USER_PROJECT=../classinshop-miniprogram/dist/build/mp-weixin
    MP_TEACHER_PROJECT=../classinshop-teacher-miniprogram/dist/build/mp-weixin
+   MINIPROGRAM_USER_TEST_TOKEN=<用户端小程序登录 token>
+   MINIPROGRAM_TEACHER_TEST_TOKEN=<教师端小程序登录 token>
    ```
 4. 运行：
    ```bash
-   pnpm test:mp
+   pnpm test:mp -- --env 14              # 用户端 + 教师端
+   pnpm test:mp:user -- --env 14         # 仅用户端 classinshop-miniprogram
+   pnpm test:mp:teacher -- --env 14      # 仅教师端 classinshop-teacher-miniprogram
+   pnpm test:mp:user -- --env 14 --file tests/miniprogram/user/auth-click.spec.ts --allure --open
    ```
 
-运行条件不满足（无 CLI / 无产物）时用例会带原因自动跳过。
+`pnpm test:mp` 与 API/Web/H5 的脚手架参数保持一致，支持 `--env`、`--file`、`--allure`、`--open`、`--report`、`--notify`。用户端和教师端已拆分为 `miniprogram-user` / `miniprogram-teacher`。运行时会先按目标用例自动编译用户端 / 教师端小程序产物并检查 CLI；运行条件不满足（无 CLI / 无产物）时准备阶段会直接报出原因，用例内部仍保留跳过保护。
+
+小程序截图策略与 Web/H5 保持一致：默认仅失败时附加小程序截图；在 `.env.local` 或 shell 中设置 `E2E_STEP_SCREENSHOTS=1` 后，会在关键步骤后额外附加步骤截图。
 
 ## 7. 性能压测
 
@@ -104,7 +113,7 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 
 ## 8. 报告
 
-- 通过 `pnpm test:api`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
+- 通过 `pnpm test:api`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile`、`pnpm test:mp` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
 - 本次 HTML 报告在该目录的 `html/index.html`；加 `--open` 会打开本次报告。
 - 本次 JUnit 在该目录的 `junit.xml`。
 - 失败截图 / trace / video 在该目录的 `artifacts/`。

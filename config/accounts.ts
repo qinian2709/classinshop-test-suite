@@ -18,6 +18,11 @@ export interface Accounts {
   token: string;
   /** H5/C 端用户 accessToken，用于与商家后台 token 分离的场景。 */
   mobileToken: string;
+  /** 微信小程序 UI 自动化专用凭据，区分用户端与教师端。 */
+  miniprogram: {
+    userToken: string;
+    teacherToken: string;
+  };
   /** 签名登录凭据，token 为空时使用。 */
   sign: SignCredential;
   /** E2E UI 登录账号（如站点支持账号密码）。 */
@@ -30,6 +35,10 @@ export interface Accounts {
 export const accounts: Accounts = {
   token: get('TEST_TOKEN'),
   mobileToken: get('MOBILE_TEST_TOKEN', get('C_END_TEST_TOKEN')),
+  miniprogram: {
+    userToken: get('MINIPROGRAM_USER_TEST_TOKEN'),
+    teacherToken: get('MINIPROGRAM_TEACHER_TEST_TOKEN'),
+  },
   sign: {
     eeoUid: get('TEST_EEO_UID'),
     signKey: get('TEST_SIGN_KEY'),
