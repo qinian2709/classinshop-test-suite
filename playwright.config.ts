@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 import { env } from './config/index.js';
 
 const isCI = !!process.env.CI;
-// 小程序自动化依赖本地微信开发者工具，默认不在常规/CI 跑，需 RUN_MP=1 显式开启。
-const runMiniprogram = process.env.RUN_MP === '1';
+// 小程序自动化依赖本地微信开发者工具，只允许本地显式开启，不进入常规/CI 项目集。
+const runMiniprogram = process.env.RUN_MP === '1' && !isCI;
 const htmlReportFolder = process.env.PLAYWRIGHT_HTML_REPORT_DIR || 'reports/html';
 const junitReportFile = process.env.PLAYWRIGHT_JUNIT_REPORT_FILE || 'reports/junit.xml';
 const allureResultsDir = process.env.ALLURE_RESULTS_DIR || 'reports/allure-results';
@@ -65,8 +65,18 @@ export default defineConfig({
     ...(runMiniprogram
       ? [
           {
-            name: 'miniprogram',
+            name: 'miniprogram-user',
             testDir: 'tests/miniprogram',
+            testMatch: /user\/.*\.spec\.ts/,
+            // 小程序自动化串行执行，单独的微信工具实例。
+            fullyParallel: false,
+            workers: 1,
+            timeout: 120_000,
+          },
+          {
+            name: 'miniprogram-teacher',
+            testDir: 'tests/miniprogram',
+            testMatch: /teacher\/.*\.spec\.ts/,
             // 小程序自动化串行执行，单独的微信工具实例。
             fullyParallel: false,
             workers: 1,

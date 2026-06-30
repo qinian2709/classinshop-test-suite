@@ -4,7 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
 type EnvName = '13' | '14' | 'im';
-type ProjectName = 'api' | 'e2e-web' | 'e2e-mobile' | 'miniprogram';
+type ProjectName =
+  | 'api'
+  | 'e2e-web'
+  | 'e2e-mobile'
+  | 'miniprogram'
+  | 'miniprogram-user'
+  | 'miniprogram-teacher';
 
 interface Options {
   env: EnvName;
@@ -37,11 +43,14 @@ function usage(exitCode = 1): never {
 Usage:
   pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
   pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure --open
+  pnpm test:mp:user -- --env 14 --file tests/miniprogram/user/auth-click.spec.ts --allure --open
+  pnpm test:mp:user -- --env 14 --allure --open
+  pnpm test:mp:teacher -- --env 14 --allure --open
 
 Options:
   -e, --env <13|14|im>       被测环境，默认 13
-  -p, --project <name>        Playwright 项目，默认按 --file 推断，支持 api/e2e-web/e2e-mobile/miniprogram
-  -f, --file <spec path>     指定用例文件；不传则运行 tests/api
+  -p, --project <name>        项目，默认按 --file 推断，支持 api/e2e-web/e2e-mobile/miniprogram/miniprogram-user/miniprogram-teacher
+  -f, --file <spec path>     指定用例文件；不传则按项目运行默认目录
   --report                   测试结束后打开 Playwright HTML 报告（兼容旧写法）
   --allure                   测试结束后生成 Allure HTML 报告
   --open                     测试结束后打开报告；配合 --allure 时打开 Allure，否则打开 Playwright HTML
@@ -58,10 +67,19 @@ function parseEnv(value: string): EnvName {
 }
 
 function parseProject(value: string): ProjectName {
-  if (value === 'api' || value === 'e2e-web' || value === 'e2e-mobile' || value === 'miniprogram') {
+  if (
+    value === 'api' ||
+    value === 'e2e-web' ||
+    value === 'e2e-mobile' ||
+    value === 'miniprogram' ||
+    value === 'miniprogram-user' ||
+    value === 'miniprogram-teacher'
+  ) {
     return value;
   }
-  console.error(`Invalid --project "${value}". Expected api, e2e-web, e2e-mobile, or miniprogram.`);
+  console.error(
+    `Invalid --project "${value}". Expected api, e2e-web, e2e-mobile, miniprogram, miniprogram-user, or miniprogram-teacher.`,
+  );
   return usage();
 }
 
@@ -189,8 +207,22 @@ function inferProject(file?: string, explicitProject?: ProjectName): ProjectName
   if (explicitProject) return explicitProject;
   if (file?.startsWith('tests/e2e-web/')) return 'e2e-web';
   if (file?.startsWith('tests/e2e-mobile/')) return 'e2e-mobile';
-  if (file?.startsWith('tests/miniprogram/')) return 'miniprogram';
+  if (file?.startsWith('tests/miniprogram/')) {
+    const target = inferMiniprogramTarget(file);
+    if (target === 'teacher') return 'miniprogram-teacher';
+    return 'miniprogram-user';
+  }
   return 'api';
+}
+
+function assertLocalMiniprogram(project: ProjectName): void {
+  if (!project.startsWith('miniprogram')) return;
+  if (!process.env.CI) return;
+
+  console.error(
+    '[test:miniprogram] 小程序自动化依赖本机微信开发者工具，仅允许本地执行；CI 中不会运行 miniprogram 项目。',
+  );
+  process.exit(1);
 }
 
 function defaultTarget(project: ProjectName): string {
@@ -200,10 +232,36 @@ function defaultTarget(project: ProjectName): string {
     case 'e2e-mobile':
       return 'tests/e2e-mobile';
     case 'miniprogram':
+    case 'miniprogram-user':
+    case 'miniprogram-teacher':
       return 'tests/miniprogram';
     default:
       return 'tests/api';
   }
+}
+
+function inferMiniprogramTarget(file?: string, project?: ProjectName): 'user' | 'teacher' | 'all' {
+  if (project === 'miniprogram-user') return 'user';
+  if (project === 'miniprogram-teacher') return 'teacher';
+  if (!file) return 'all';
+  const normalized = file.toLowerCase();
+  if (normalized.includes('tests/miniprogram/teacher/')) return 'teacher';
+  if (normalized.includes('tests/miniprogram/user/')) return 'user';
+  if (normalized.includes('/teacher') || normalized.includes('teacher.')) return 'teacher';
+  if (normalized.includes('/user') || normalized.includes('user.')) return 'user';
+  return 'all';
+}
+
+function resolvePlaywrightProjects(project: ProjectName, file?: string): string[] {
+  if (project === 'miniprogram-user') return ['miniprogram-user'];
+  if (project === 'miniprogram-teacher') return ['miniprogram-teacher'];
+  if (project === 'miniprogram') {
+    const target = inferMiniprogramTarget(file, project);
+    if (target === 'user') return ['miniprogram-user'];
+    if (target === 'teacher') return ['miniprogram-teacher'];
+    return ['miniprogram-user', 'miniprogram-teacher'];
+  }
+  return [project];
 }
 
 function buildRunId(project: ProjectName): string {
@@ -247,6 +305,28 @@ function runPlaywright(
       TEST_ENV: env,
       PLAYWRIGHT_BROWSERS_PATH: '0',
       ...envOverrides,
+    },
+  });
+
+  if (result.error) {
+    console.error(result.error.message);
+    return 1;
+  }
+  return result.status ?? 1;
+}
+
+function prepareMiniprogram(env: EnvName, project: ProjectName, file?: string): number {
+  const bin = path.join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'tsx.cmd' : 'tsx');
+  const target = inferMiniprogramTarget(file, project);
+  const args = ['scripts/prepare-miniprogram.ts', '--target', target];
+
+  console.log(`[test:miniprogram] TEST_ENV=${env} tsx ${args.join(' ')}`);
+  const result = spawnSync(bin, args, {
+    cwd: ROOT,
+    stdio: 'inherit',
+    env: {
+      ...process.env,
+      TEST_ENV: env,
     },
   });
 
@@ -402,8 +482,15 @@ function simulateWeComNotification(
 
 const options = parseArgs(process.argv.slice(2));
 const project = inferProject(options.file, options.project);
+assertLocalMiniprogram(project);
 const target = options.file ?? defaultTarget(project);
-const testArgs = ['test', target, `--project=${project}`, ...options.passthrough];
+const playwrightProjects = resolvePlaywrightProjects(project, options.file);
+const testArgs = [
+  'test',
+  target,
+  ...playwrightProjects.map((playwrightProject) => `--project=${playwrightProject}`),
+  ...options.passthrough,
+];
 const logPrefix = `[test:${project}]`;
 const reportPaths = buildReportPaths(project);
 const playwrightReportEnv = {
@@ -420,7 +507,16 @@ if (options.allure) {
   cleanAllureOutput(reportPaths);
 }
 
-const testExitCode = runPlaywright(testArgs, options.env, playwrightReportEnv);
+const prepareExitCode = project.startsWith('miniprogram')
+  ? prepareMiniprogram(options.env, project, options.file)
+  : 0;
+const testExitCode =
+  prepareExitCode === 0
+    ? runPlaywright(testArgs, options.env, {
+        ...playwrightReportEnv,
+        ...(project.startsWith('miniprogram') ? { RUN_MP: '1' } : {}),
+      })
+    : prepareExitCode;
 let allureExitCode = 0;
 let allureReportGenerated = false;
 
