@@ -58,6 +58,19 @@ The runner automatically:
 - Sets `RUN_MP=1`.
 - Uses the same unique report directory pattern as other projects.
 
+## Directory Layout
+
+Keep mini-program specs separated by product:
+
+```text
+tests/miniprogram/
+  user/       # classinshop-miniprogram
+  teacher/    # classinshop-teacher-miniprogram
+  helpers/    # shared launch/auth/screenshot helpers
+```
+
+Do not add new specs directly under `tests/miniprogram/`. Put user-side specs under `user/` and teacher-side specs under `teacher/`.
+
 ## Login State
 
 For logged-in user/student scenarios, use the existing helper:
@@ -66,10 +79,22 @@ For logged-in user/student scenarios, use the existing helper:
 import { buildStudentAuthState, installMiniProgramAuth } from './helpers/auth.js';
 ```
 
+For logged-in teacher scenarios, use:
+
+```ts
+import { buildTeacherAuthState, installMiniProgramAuth } from './helpers/auth.js';
+```
+
 Then inject login state:
 
 ```ts
 await installMiniProgramAuth(mp, buildStudentAuthState());
+```
+
+or:
+
+```ts
+await installMiniProgramAuth(mp, buildTeacherAuthState());
 ```
 
 Do not reimplement login-state injection in specs. Do not manually write mini-program storage keys in a test file. If login injection needs to change, update `tests/miniprogram/helpers/auth.ts`.
@@ -84,6 +109,34 @@ Current injection is intentionally minimal:
 Do not use `MOBILE_TEST_TOKEN` directly for mini-program login injection. Even when the token value is currently the same as H5/mobile, keep a separate mini-program variable name for maintainability.
 
 If a future scenario needs additional mini-program identity values, add them to `.env.local` / `.env.example` first and read them via config. Do not hardcode real or fake user information in source files.
+
+## Teacher Miniprogram
+
+Teacher-side specs belong under `tests/miniprogram/teacher/**`.
+
+Use the existing auth helper for login-state injection:
+
+```ts
+import { buildTeacherAuthState, installMiniProgramAuth } from '../helpers/auth.js';
+
+await installMiniProgramAuth(mp, buildTeacherAuthState());
+```
+
+Do not copy the user-side injection code into teacher specs. Do not write `__user__`, `authToken`, `tokenInfo`, `userInfo`, `openId`, or `unionId` manually in a teacher spec.
+
+Teacher-side login uses `MINIPROGRAM_TEACHER_TEST_TOKEN`, which should be maintained separately from `MINIPROGRAM_USER_TEST_TOKEN`. It may currently have the same value as the merchant/admin `TEST_TOKEN`, but keep the variable separate for future maintenance.
+
+For teacher assertions, prefer real teacher business UI:
+
+- Logged-out entry is absent.
+- Teacher-side menus such as `公众号通知` or `退出登录` are present.
+- Click actions navigate to expected teacher pages, for example `pages/official-account/index`.
+
+Run teacher specs with:
+
+```bash
+pnpm test:mp:teacher -- --env 14 --file tests/miniprogram/teacher/auth-click.spec.ts --allure --open
+```
 
 ## Environment Variables
 
@@ -140,6 +193,7 @@ Before finishing a mini-program test change:
 
 - The spec uses helpers from `tests/miniprogram/helpers/**`.
 - Logged-in scenarios use `installMiniProgramAuth()` and do not duplicate storage writes.
+- Teacher-side logged-in scenarios use `buildTeacherAuthState()` rather than user-side auth state.
 - No hardcoded tokens, usernames, user IDs, openId, or unionId are introduced.
 - Any required local-only values are documented in `.env.example`.
 - Local-only CI guards remain intact.

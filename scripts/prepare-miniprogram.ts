@@ -155,15 +155,16 @@ function patchPluginAppIds(outputDir: string): void {
   if (!fs.existsSync(appJsonPath)) return;
 
   const appJson = JSON.parse(fs.readFileSync(appJsonPath, 'utf8')) as {
-    plugins?: Record<string, { provider?: string; appid?: string }>;
+    plugins?: Record<string, { provider?: string; appid?: string; appId?: string }>;
   };
   let changed = false;
 
   for (const [name, plugin] of Object.entries(appJson.plugins ?? {})) {
-    if (plugin.provider && !plugin.appid) {
+    if (plugin.provider && (!plugin.appid || !plugin.appId)) {
       plugin.appid = plugin.provider;
+      plugin.appId = plugin.provider;
       changed = true;
-      console.log(`[miniprogram] 补齐插件 ${name} appid=${plugin.appid}`);
+      console.log(`[miniprogram] 补齐插件 ${name} appid/appId=${plugin.provider}`);
     }
   }
 
