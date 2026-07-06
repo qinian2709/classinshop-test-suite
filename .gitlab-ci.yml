@@ -3,7 +3,7 @@
 #
 # 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
 #   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
-#   SHOP_DOMAIN    被测店铺域名（X-Shop-Domain），如 https://demo.shop13.eeo.im
+#   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain），如 https://appi4rhoyxe1.shop14.eeo.im
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 

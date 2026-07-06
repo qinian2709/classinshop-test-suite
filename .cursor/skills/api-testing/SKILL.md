@@ -86,13 +86,13 @@ Environment files are selected by `TEST_ENV` / `--env`:
 - `--env 14` loads `.env.local`, `.env.14`, `.env`
 - `--env im` loads `.env.local`, `.env.im`, `.env`
 
-Use `env.apiBaseURL`, `env.shopHost`, `env.shopDomain`, and `env.shopId` as appropriate. Avoid hardcoded hosts and raw endpoint strings.
+Use `env.apiBaseURL`, `env.shopHost`, `env.mobileBaseURL`, and `env.shopId` as appropriate. Avoid hardcoded hosts and raw endpoint strings.
 
-Do not confuse `SHOP_ID` and `SHOP_DOMAIN`:
+Do not confuse `SHOP_ID` and `MOBILE_BASE_URL`:
 
-- `SHOP_ID` is the numeric PC-admin shop ID, e.g. the `18537` in `https://shop14.eeo.im/shop/18537`; use it for `/shop/:shopId/...` routes or for selecting a shop from `/user/shops`.
-- `SHOP_DOMAIN` is the C-end shop domain used by `X-Shop-Domain`, usually like `https://xxx.shop14.eeo.im`. The backend parses the host prefix, not the `/shop/:id` path.
-- If only `SHOP_ID` is known, derive the C-end domain through upstream APIs: `GET /user/shops -> orgId`, then `GET /org/:orgId/detail -> shopDomain`, then pass that `shopDomain` as `X-Shop-Domain`.
+- `SHOP_ID` is the numeric PC-admin shop ID, e.g. `18537`; use it for `/shop/:shopId/...` routes or for selecting a shop from `/user/shops`.
+- `MOBILE_BASE_URL` is the C-end H5 shop URL, configured in `.env.13` / `.env.14` / `.env.im`. It is used as Playwright `baseURL` for mobile E2E and as API `X-Shop-Domain`.
+- If only `SHOP_ID` is known, derive the C-end domain through upstream APIs: `GET /user/shops -> orgId`, then `GET /org/:orgId/detail -> shopDomain`, then pass that value as `X-Shop-Domain` (or align `MOBILE_BASE_URL` with it).
 
 ## Endpoints
 
@@ -179,6 +179,17 @@ Use meaningful test titles and annotation/attachment names. Reports are read by 
 - Attach request logs for demo, smoke, or failure-prone custom fetch scenarios.
 - Keep sensitive values masked.
 
+## Author Field
+
+When first generating a new test case, include an author field in the scenario comment immediately. Resolve the value from the current Git author (`git config user.name`; fall back to the latest commit author if needed). Do not write a placeholder such as `提交人`.
+
+```ts
+/**
+ * 场景说明。
+ * author：qiukailiang
+ */
+```
+
 ## Runner Commands
 
 Use the shared runner shape:
@@ -206,13 +217,14 @@ Before finishing an API test change:
 - Authenticated tests use `api`/`token` fixtures instead of duplicating auth logic.
 - Manual headers use `formatAuthorizationHeader()` and never print the token.
 - HTML `403` is diagnosed as gateway/header/domain mismatch before changing business assertions.
-- `SHOP_ID` and `SHOP_DOMAIN` are not mixed; derive `shopDomain` from upstream APIs when needed.
+- `SHOP_ID` and `MOBILE_BASE_URL` are not mixed; derive C-end domain from upstream APIs when needed.
 - Multi-step scenarios document upstream/downstream field extraction.
 - Public tests use `anonApi`.
 - Environment values come from `@config`.
 - Endpoints use `Endpoints`.
 - Request logs use `attachApiCallLog` when logs are needed.
 - Assertions include meaningful messages.
+- Newly generated cases include `author：<actual author>` in the scenario comment from the first draft.
 - No secrets are committed or printed.
 - `npm run typecheck` passes.
 - Recently edited files have no linter diagnostics.

@@ -211,7 +211,7 @@ async function resolveShopContext(testInfo: TestInfo): Promise<{ shopId: number;
   });
   expect(orgDetail.body.code, '组织详情业务 code 应为成功码').toBe(SUCCESS_CODE);
 
-  const shopDomain = orgDetail.body.data?.shopDomain || configEnv.shopDomain;
+  const shopDomain = orgDetail.body.data?.shopDomain || configEnv.mobileBaseURL;
   expect(shopDomain, '应能解析 C 端 shopDomain，用于 mobile 的 X-Shop-Domain').toBeTruthy();
 
   return { shopId, shopDomain };

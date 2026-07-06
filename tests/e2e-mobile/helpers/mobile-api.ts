@@ -149,7 +149,7 @@ export async function resolveMobileShopContext(testInfo: TestInfo): Promise<Mobi
           logName: '请求日志-H5-组织详情.json',
           assertions: ['组织详情应返回 H5 店铺域名'],
         });
-        const shopDomain = detail.body.data?.shopDomain || configEnv.shopDomain || configEnv.mobileBaseURL;
+        const shopDomain = detail.body.data?.shopDomain || configEnv.mobileBaseURL;
         if (detail.body.code === SUCCESS_CODE && shopDomain) {
           return { shopId: orgId, shopDomain };
         }
@@ -157,9 +157,9 @@ export async function resolveMobileShopContext(testInfo: TestInfo): Promise<Mobi
     }
   }
 
-  const fallbackDomain = configEnv.shopDomain || configEnv.mobileBaseURL;
+  const fallbackDomain = configEnv.mobileBaseURL;
   if (!fallbackDomain) {
-    throw new Error('缺少 SHOP_DOMAIN 或 MOBILE_BASE_URL，无法解析 H5 店铺上下文');
+    throw new Error('缺少 MOBILE_BASE_URL，无法解析 H5 店铺上下文');
   }
   return {
     shopId: configEnv.shopId ? Number(configEnv.shopId) : undefined,

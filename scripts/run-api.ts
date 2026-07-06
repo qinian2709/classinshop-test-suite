@@ -8,6 +8,7 @@ type ProjectName =
   | 'api'
   | 'e2e-web'
   | 'e2e-mobile'
+  | 'core'
   | 'miniprogram'
   | 'miniprogram-user'
   | 'miniprogram-teacher';
@@ -42,6 +43,7 @@ function usage(exitCode = 1): never {
   console.error(`
 Usage:
   pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
+  pnpm test:core -- --env 14 --allure --open
   pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure --open
   pnpm test:mp:user -- --env 14 --file tests/miniprogram/user/auth-click.spec.ts --allure --open
   pnpm test:mp:user -- --env 14 --allure --open
@@ -49,7 +51,7 @@ Usage:
 
 Options:
   -e, --env <13|14|im>       被测环境，默认 13
-  -p, --project <name>        项目，默认按 --file 推断，支持 api/e2e-web/e2e-mobile/miniprogram/miniprogram-user/miniprogram-teacher
+  -p, --project <name>        项目，默认按 --file 推断；支持 api/e2e-web/e2e-mobile/core/miniprogram/miniprogram-user/miniprogram-teacher
   -f, --file <spec path>     指定用例文件；不传则按项目运行默认目录
   --report                   测试结束后打开 Playwright HTML 报告（兼容旧写法）
   --allure                   测试结束后生成 Allure HTML 报告
@@ -71,6 +73,7 @@ function parseProject(value: string): ProjectName {
     value === 'api' ||
     value === 'e2e-web' ||
     value === 'e2e-mobile' ||
+    value === 'core' ||
     value === 'miniprogram' ||
     value === 'miniprogram-user' ||
     value === 'miniprogram-teacher'
@@ -78,7 +81,7 @@ function parseProject(value: string): ProjectName {
     return value;
   }
   console.error(
-    `Invalid --project "${value}". Expected api, e2e-web, e2e-mobile, miniprogram, miniprogram-user, or miniprogram-teacher.`,
+    `Invalid --project "${value}". Expected api, e2e-web, e2e-mobile, core, miniprogram, miniprogram-user, or miniprogram-teacher.`,
   );
   return usage();
 }
@@ -225,8 +228,10 @@ function assertLocalMiniprogram(project: ProjectName): void {
   process.exit(1);
 }
 
-function defaultTarget(project: ProjectName): string {
+function defaultTarget(project: ProjectName): string | undefined {
   switch (project) {
+    case 'core':
+      return undefined;
     case 'e2e-web':
       return 'tests/e2e-web';
     case 'e2e-mobile':
@@ -253,6 +258,7 @@ function inferMiniprogramTarget(file?: string, project?: ProjectName): 'user' | 
 }
 
 function resolvePlaywrightProjects(project: ProjectName, file?: string): string[] {
+  if (project === 'core') return ['api', 'e2e-web', 'e2e-mobile'];
   if (project === 'miniprogram-user') return ['miniprogram-user'];
   if (project === 'miniprogram-teacher') return ['miniprogram-teacher'];
   if (project === 'miniprogram') {
@@ -487,7 +493,7 @@ const target = options.file ?? defaultTarget(project);
 const playwrightProjects = resolvePlaywrightProjects(project, options.file);
 const testArgs = [
   'test',
-  target,
+  ...(target ? [target] : []),
   ...playwrightProjects.map((playwrightProject) => `--project=${playwrightProject}`),
   ...options.passthrough,
 ];
@@ -528,7 +534,7 @@ if (options.allure) {
 }
 
 if (options.notify) {
-  simulateWeComNotification(options, target, testExitCode, allureReportGenerated, reportPaths);
+  simulateWeComNotification(options, target ?? 'api + e2e-web + e2e-mobile', testExitCode, allureReportGenerated, reportPaths);
 }
 
 let openExitCode = 0;

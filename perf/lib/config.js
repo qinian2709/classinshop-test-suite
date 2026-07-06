@@ -1,5 +1,5 @@
 // k6 运行时配置（k6 使用自带 JS 运行时，非 Node，故独立于 shared/）。
-// 通过环境变量注入：K6_ENV(13|14|im)、TOKEN、SHOP_DOMAIN。
+// 通过环境变量注入：K6_ENV(13|14|im)、TOKEN、MOBILE_BASE_URL。
 
 const HOSTS = {
   13: 'https://dynamic-shop13.eeo.im',
@@ -15,7 +15,7 @@ export const config = {
   apiHost,
   baseURL: `${apiHost}/api/v1`,
   token: __ENV.TOKEN || '',
-  shopDomain: __ENV.SHOP_DOMAIN || '',
+  shopDomain: __ENV.MOBILE_BASE_URL || '',
 };
 
 export function headers() {

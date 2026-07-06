@@ -12,6 +12,7 @@
     "install:browsers": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install --with-deps",
     "test": "playwright test",
     "test:api": "tsx scripts/run-api.ts",
+    "test:core": "tsx scripts/run-api.ts --project core",
     "test:e2e:web": "tsx scripts/run-api.ts --project e2e-web",
     "test:e2e:mobile": "tsx scripts/run-api.ts --project e2e-mobile",
     "prepare:mp": "tsx scripts/prepare-miniprogram.ts",

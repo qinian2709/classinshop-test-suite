@@ -19,7 +19,7 @@ pnpm perf:baseline
 k6 run perf/scenarios/api-baseline.js -e K6_ENV=14 -e TOKEN=<accessToken>
 
 # 负载 + 峰值（需要店铺域名）
-k6 run perf/scenarios/order-load.js -e K6_ENV=13 -e SHOP_DOMAIN=https://demo.shop13.eeo.im
+k6 run perf/scenarios/order-load.js -e K6_ENV=13 -e MOBILE_BASE_URL=https://demo.shop13.eeo.im
 ```
 
 ## 环境变量
@@ -29,7 +29,7 @@ k6 run perf/scenarios/order-load.js -e K6_ENV=13 -e SHOP_DOMAIN=https://demo.sho
 | `K6_ENV`      | 环境 `13` / `14` / `im`                         | `13`             |
 | `API_HOST`    | 覆盖 API 域名                                   | 由 `K6_ENV` 推导 |
 | `TOKEN`       | accessToken（压受保护接口时需要）               | 空               |
-| `SHOP_DOMAIN` | 店铺域名（`X-Shop-Domain`，命中按域名识别店铺） | 空               |
+| `MOBILE_BASE_URL` | C 端 H5 店铺 URL（`X-Shop-Domain`，命中按域名识别店铺） | 空               |
 
 ## 阈值（thresholds）
 

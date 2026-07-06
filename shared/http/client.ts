@@ -38,7 +38,7 @@ export class ApiClient {
   constructor(options: ApiClientOptions = {}) {
     this.baseURL = (options.baseURL ?? env.apiBaseURL).replace(/\/$/, '');
     this.token = options.token ?? '';
-    this.shopDomain = options.shopDomain ?? env.shopDomain;
+    this.shopDomain = options.shopDomain ?? env.mobileBaseURL;
     this.defaultHeaders = options.headers ?? {};
     this.timeout = options.timeout ?? 15_000;
   }
