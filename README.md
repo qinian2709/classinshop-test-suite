@@ -71,6 +71,8 @@ pnpm report:allure:open
 | `pnpm install:browsers`                        | 安装 / 更新 Playwright 浏览器驱动            |
 | `pnpm test`                                    | 运行全部 Playwright 项目                     |
 | `pnpm test:api`                                | 仅接口自动化                                 |
+| `pnpm test:core`                               | 一次运行 API + PC Web + H5 Mobile 全量用例   |
+| `pnpm test:core -- --env 14 --allure --open`   | 14 环境跑 core 全量并打开 Allure 报告        |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts` | 按环境运行指定 API 用例             |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify` | 打开默认报告并模拟企微通知 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure` | 测试结束后生成 Allure HTML 报告     |

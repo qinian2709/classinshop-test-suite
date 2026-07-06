@@ -113,7 +113,7 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 
 ## 8. 报告
 
-- 通过 `pnpm test:api`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile`、`pnpm test:mp` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
+- 通过 `pnpm test:api`、`pnpm test:core`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile`、`pnpm test:mp` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
 - 本次 HTML 报告在该目录的 `html/index.html`；加 `--open` 会打开本次报告。
 - 本次 JUnit 在该目录的 `junit.xml`。
 - 失败截图 / trace / video 在该目录的 `artifacts/`。
