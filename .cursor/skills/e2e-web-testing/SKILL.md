@@ -132,6 +132,17 @@ Use meaningful attachment and assertion names because Allure exposes them direct
 - For API request/response logs, use shared helpers rather than hand-writing attachment payloads.
 - Avoid technical names like `api-call.json` when a business-readable name such as `请求日志.json` is clearer.
 
+## Author Field
+
+When first generating a new test case, include an author field in the scenario comment immediately. Resolve the value from the current Git author (`git config user.name`; fall back to the latest commit author if needed). Do not write a placeholder such as `提交人`.
+
+```ts
+/**
+ * 场景说明。
+ * author：qiukailiang
+ */
+```
+
 ## Runner Commands
 
 Use the shared runner shape for E2E Web:
@@ -155,6 +166,7 @@ Before finishing an E2E Web change:
 - The spec does not duplicate login injection logic.
 - Environment values come from `@config`.
 - Assertions include meaningful messages.
+- Newly generated cases include `author：<actual author>` in the scenario comment from the first draft.
 - Step screenshots are attached when `E2E_STEP_SCREENSHOTS=1`.
 - Selectors/actions are placed in Page Objects when reused or non-trivial.
 - Waits are specific and not unnecessarily long.

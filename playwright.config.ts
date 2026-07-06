@@ -41,7 +41,7 @@ export default defineConfig({
         baseURL: env.apiBaseURL,
         extraHTTPHeaders: {
           'Content-Type': 'application/json',
-          ...(env.shopDomain ? { 'X-Shop-Domain': env.shopDomain } : {}),
+          ...(env.mobileBaseURL ? { 'X-Shop-Domain': env.mobileBaseURL } : {}),
         },
       },
     },

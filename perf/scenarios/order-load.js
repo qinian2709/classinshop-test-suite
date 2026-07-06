@@ -4,8 +4,8 @@ import { Trend } from 'k6/metrics';
 import { config, headers } from '../lib/config.js';
 
 // 负载 + 峰值：对 C 端高频只读链路（店铺信息 / 商品列表）施压。
-// 需要 SHOP_DOMAIN（命中 GetShopByDomain），可选 TOKEN。
-// 运行：k6 run perf/scenarios/order-load.js -e SHOP_DOMAIN=https://demo.shop13.eeo.im
+// 需要 MOBILE_BASE_URL（命中 GetShopByDomain），可选 TOKEN。
+// 运行：k6 run perf/scenarios/order-load.js -e MOBILE_BASE_URL=https://demo.shop13.eeo.im
 const goodsListTrend = new Trend('goods_list_duration', true);
 
 export const options = {

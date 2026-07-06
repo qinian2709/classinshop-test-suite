@@ -54,13 +54,13 @@ TEST_ENV=im pnpm test:e2e:web
 
 ## 4. 店铺维度（X-Shop-Domain）
 
-部分 C 端接口按店铺域名识别（`GetShopByDomain` 中间件）。在 `.env.local` 设置：
+部分 C 端接口按店铺域名识别（`GetShopByDomain` 中间件）。在对应环境的 `.env.13` / `.env.14` / `.env.im` 中配置：
 
 ```
-SHOP_DOMAIN=https://demo.shop13.eeo.im
+MOBILE_BASE_URL=https://appi4rhoyxe1.shop14.eeo.im
 ```
 
-未配置时，店铺/优惠券相关用例会自动跳过。
+该字段同时用于 H5 E2E 的 `baseURL` 和 API 的 `X-Shop-Domain`。未配置时，店铺/优惠券相关用例会自动跳过。
 
 ## 5. 接口类型代码生成（可选）
 
@@ -122,4 +122,4 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 ## 9. CI
 
 见 `.gitlab-ci.yml`。分支 `13/14/im` 推送或定时任务触发；
-在 GitLab CI/CD Variables 配置 `TEST_TOKEN`、`SHOP_DOMAIN` 等（建议 Masked）。
+在 GitLab CI/CD Variables 配置 `TEST_TOKEN`、`MOBILE_BASE_URL` 等（建议 Masked）。

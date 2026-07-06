@@ -9,11 +9,11 @@ import { buildCalculatePayload, pickNumber, asArray } from '@shared';
  *   - couponId 由 availableCoupon fixture 从「可领取列表」发现；
  *   - 领券 → 我的券列表拿到 userCouponId（用户券记录 id，区别于 couponId）→ 喂给算价；
  *   - 券与当前商品规则可能不匹配，算价能正常返回（成功或业务校验）即说明链路打通；
- *   - 整组依赖店铺维度（X-Shop-Domain），未配置 SHOP_DOMAIN 时跳过。
+ *   - 整组依赖店铺维度（X-Shop-Domain），未配置 MOBILE_BASE_URL 时跳过。
  */
 
 test.describe('优惠券链路（依赖可领券与商品数据）', () => {
-  test.skip(({ env }) => !env.shopDomain, '未配置 SHOP_DOMAIN，跳过店铺维度优惠券链路');
+  test.skip(({ env }) => !env.mobileBaseURL, '未配置 MOBILE_BASE_URL，跳过店铺维度优惠券链路');
 
   test('可领券 → 领取 → 我的券 → 算价带券', async ({ api, availableCoupon, sampleGoods }) => {
     await test.step('领取优惠券（上游）', async () => {

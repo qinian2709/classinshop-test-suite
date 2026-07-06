@@ -44,7 +44,7 @@ export interface ApiFixtures {
 }
 
 function shopHeaders(): Record<string, string> {
-  return env.shopDomain ? { 'X-Shop-Domain': env.shopDomain } : {};
+  return env.mobileBaseURL ? { 'X-Shop-Domain': env.mobileBaseURL } : {};
 }
 
 /**
@@ -111,7 +111,7 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
 
   availableCoupon: async ({ api }, use) => {
     const coupon = await pickAvailableCoupon(api);
-    test.skip(!coupon, '环境无可领取优惠券（需配置 SHOP_DOMAIN），跳过依赖优惠券的链路');
+    test.skip(!coupon, '环境无可领取优惠券（需配置 MOBILE_BASE_URL），跳过依赖优惠券的链路');
     await use(coupon as AvailableCoupon);
   },
 

@@ -17,6 +17,15 @@ The mini-program tests target:
 
 Keep specs business-readable. Put launch/auth/screenshot logic in helpers under `tests/miniprogram/helpers/**`; specs should describe page entry, click behavior, and assertions.
 
+When first generating a new test case, include an author field in the scenario comment immediately. Resolve the value from the current Git author (`git config user.name`; fall back to the latest commit author if needed). Do not write a placeholder such as `提交人`.
+
+```ts
+/**
+ * 场景说明。
+ * author：qiukailiang
+ */
+```
+
 ## Local-Only Execution
 
 Mini-program automation depends on local WeChat DevTools, so it must not run in CI or regular full test runs.
@@ -192,6 +201,7 @@ Avoid asserting fake injected user data. For logged-in pages, prefer asserting r
 Before finishing a mini-program test change:
 
 - The spec uses helpers from `tests/miniprogram/helpers/**`.
+- Newly generated cases include `author：<actual author>` in the scenario comment from the first draft.
 - Logged-in scenarios use `installMiniProgramAuth()` and do not duplicate storage writes.
 - Teacher-side logged-in scenarios use `buildTeacherAuthState()` rather than user-side auth state.
 - No hardcoded tokens, usernames, user IDs, openId, or unionId are introduced.

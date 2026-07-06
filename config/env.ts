@@ -61,13 +61,11 @@ export interface EnvConfig {
   loginOrigin: string;
   /** 静态资源域名 */
   staticHost: string;
-  /** 被测店铺域名（X-Shop-Domain 头） */
-  shopDomain: string;
   /** 被测店铺 ID（/shop/:shopId 接口） */
   shopId: string;
   /** PC 后台 E2E 基础地址 */
   webBaseURL: string;
-  /** H5 E2E 基础地址 */
+  /** C 端 H5 店铺 URL：e2e-mobile baseURL，同时作为 API X-Shop-Domain */
   mobileBaseURL: string;
   /** E2E 关键步骤截图开关 */
   e2eStepScreenshots: boolean;
@@ -80,9 +78,8 @@ export const env: EnvConfig = {
   shopHost: get('SHOP_HOST'),
   loginOrigin: get('LOGIN_ORIGIN'),
   staticHost: get('STATIC_HOST'),
-  shopDomain: get('SHOP_DOMAIN'),
   shopId: get('SHOP_ID'),
   webBaseURL: get('WEB_BASE_URL', get('SHOP_HOST')),
-  mobileBaseURL: get('MOBILE_BASE_URL', get('SHOP_DOMAIN')),
+  mobileBaseURL: get('MOBILE_BASE_URL'),
   e2eStepScreenshots: getBoolean('E2E_STEP_SCREENSHOTS'),
 };
