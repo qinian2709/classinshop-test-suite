@@ -17,7 +17,7 @@ Use the shared project entrypoint:
 
 ```ts
 import { test, expect } from '@shared';
-import { Endpoints, SUCCESS_CODE } from '@shared';
+import { Endpoints, SUCCESS_CODE, attachApiCallLog } from '@shared';
 ```
 
 Use fixtures from `shared/fixtures/index.ts`:
@@ -114,7 +114,7 @@ Add new endpoint constants to `shared/api/endpoints.ts` when introducing a new A
 
 ## Request Logs
 
-For report-visible request/response logs, use the shared helper:
+For report-visible request/response logs, use the shared helper for **all API test cases**:
 
 ```ts
 await attachApiCallLog({
@@ -126,6 +126,10 @@ await attachApiCallLog({
 ```
 
 Do not hand-roll repeated `test.info().attach(...)` JSON blocks. The helper masks `authorization`, `cookie`, and `set-cookie`, and uses the report-friendly default attachment name `请求日志.json`.
+
+When one test performs multiple HTTP calls, pass a distinct `name` for each `attachApiCallLog` so Allure shows every step separately.
+
+**Always attach request logs for every API test case** to ensure complete traceability in test reports. This is required for debugging and audit purposes.
 
 ## Assertions
 
@@ -171,12 +175,44 @@ For multi-step scenarios, write the dependency chain in the spec comment and ext
 
 Do not write payment success scenarios unless a test payment sandbox or callback simulation is available. For payment-related areas, prefer read-only status checks, parameter validation, or explicitly skipped opt-in tests with documented prerequisites.
 
-## Reports
+### Test Order And Shared State
+
+API specs in this project run sequentially (`api` project: `workers: 1`, `fullyParallel: false`), but **test order still matters** when multiple cases touch the same mutable resource (notifications, addresses, coupons, etc.).
+
+Rules:
+
+- Put **read-only / parameter-validation** cases first.
+- Put **single-item mutation** before **bulk mutation** when both need the same precondition.
+- Put **cleanup-heavy or state-wiping** cases last in the file or describe block.
+
+Bad order example:
+
+```text
+POST /notifications/read-all   # clears all unread
+POST /notifications/:id/read     # may skip: no unread left
+```
+
+Good order example:
+
+```text
+POST /notifications/:id/read   # negative: fake id, no unread needed
+单条已读链路                      # needs one unread notification
+POST /notifications/read-all   # last: clears remaining unread
+```
+
+When order is required:
+
+- Document the dependency in the file header comment or section comment.
+- Prefer one self-contained multi-step test when steps must always run together.
+- Use `test.skip(...)` only for missing env/preconditions, not to hide ordering bugs.
+- For multi-step tests, call `attachApiCallLog` **once per HTTP request** and give each attachment a distinct `name` (for example `请求日志-单条已读-未读通知列表.json`, `请求日志-单条已读-标记已读.json`).
+
+Use the `data` fixture or explicit cleanup when a mutation creates resources that later cases or reruns would break.
 
 Use meaningful test titles and annotation/attachment names. Reports are read by humans and may be sent to WeCom later.
 
 - Use Chinese business descriptions in test names and assertion messages.
-- Attach request logs for demo, smoke, or failure-prone custom fetch scenarios.
+- **Always attach request logs for all API test cases** using `attachApiCallLog`.
 - Keep sensitive values masked.
 
 ## Author Field
@@ -219,10 +255,12 @@ Before finishing an API test change:
 - HTML `403` is diagnosed as gateway/header/domain mismatch before changing business assertions.
 - `SHOP_ID` and `MOBILE_BASE_URL` are not mixed; derive C-end domain from upstream APIs when needed.
 - Multi-step scenarios document upstream/downstream field extraction.
+- Mutation cases that share state are ordered correctly (granular before bulk; read-only before write; state-wiping last).
+- Multi-step cases attach one distinct request log per HTTP call (`name` per step).
 - Public tests use `anonApi`.
 - Environment values come from `@config`.
 - Endpoints use `Endpoints`.
-- Request logs use `attachApiCallLog` when logs are needed.
+- **All API test cases attach request logs using `attachApiCallLog`.**
 - Assertions include meaningful messages.
 - Newly generated cases include `author：<actual author>` in the scenario comment from the first draft.
 - No secrets are committed or printed.
