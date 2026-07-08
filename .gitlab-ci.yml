@@ -26,24 +26,24 @@ stages:
   - test
   - report
 
-# 根据分支推导被测环境；schedule 用 SCHEDULE_TEST_ENV（默认 13）。
+# 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
 prepare:
   stage: prepare
   image: ${PLAYWRIGHT_IMAGE}
   script:
     - |
       if [ "${CI_PIPELINE_SOURCE}" = "schedule" ]; then
-        test_env="${SCHEDULE_TEST_ENV:-13}"
+        test_env="${SCHEDULE_TEST_ENV:-14}"
       else
         case "${CI_COMMIT_BRANCH}" in
           13) test_env="13" ;;
           14) test_env="14" ;;
           im) test_env="im" ;;
-          *) test_env="13" ;;
+          *) test_env="14" ;;
         esac
       fi
-    - echo "TEST_ENV=$test_env" > deploy.env
-    - cat deploy.env
+      echo "TEST_ENV=$test_env" > deploy.env
+      cat deploy.env
   artifacts:
     reports:
       dotenv: deploy.env
