@@ -99,8 +99,7 @@ await test.step('订单详情（下游）', async () => {
 
 ### 约定
 
-- 只读优先：能用「算价/校验」验证就不真支付/真写，避免脏单（如算价 vs 下单）。
-- 写操作走开关：真实下单 `TEST_ALLOW_ORDER_CREATE=1`、真实约课 `TEST_ALLOW_APPOINTMENT_BOOK=1`，默认跳过。
+- 只读优先：能用「算价/校验」验证就不真支付；下单/约课等写操作默认参与 CI，结束自动清理（取消预约等）。
 - 缺上游数据 → `test.skip`，CI 仍绿；不要因环境无数据判失败。
 - 响应字段名做容错：用 `pickNumber(obj, [...])` 与 `asArray(data)` 兼容 camelCase/snake_case 及 `list/items` 包裹。
 

@@ -213,8 +213,21 @@ test.describe('推广商品与商家', () => {
   });
 
   test('GET /spread/info 返回商家推广信息', async ({ api, env }) => {
-    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.promotionInfo(env.shopId)}`;
-    const { status, body } = await api.get(Endpoints.shopAdmin.promotionInfo(env.shopId));
+    interface MerchantItem { merchantOrgID: number }
+    interface MerchantList { list: MerchantItem[]; total: number }
+
+    const { body: merchantsBody } = await api.get<MerchantList>(
+      Endpoints.shopAdmin.promotionMerchants(env.shopId),
+      { query: { page: 1, limit: 1 } },
+    );
+    expect(merchantsBody.code, '获取推广商家列表应成功').toBe(SUCCESS_CODE);
+    test.skip(!merchantsBody.data?.list?.[0], '当前无可推广商家，跳过推广信息');
+
+    const merchantOrgID = merchantsBody.data!.list[0]!.merchantOrgID;
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.promotionInfo(env.shopId)}?merchantOrgID=${merchantOrgID}`;
+    const { status, body } = await api.get(Endpoints.shopAdmin.promotionInfo(env.shopId), {
+      query: { merchantOrgID },
+    });
 
     await attachApiCallLog({
       testInfo: test.info(),

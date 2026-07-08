@@ -8,7 +8,7 @@ import { Endpoints, SUCCESS_CODE, ERR_SYSTEM_PARAM, attachApiCallLog } from '@sh
  *   GET  /system/agreement         — 协议详情
  *   GET  /system/agreement/list    — 协议列表
  *   POST /system/sendcode          — 发送验证码（异常场景）
- *   GET  /system/cos/sign          — COS 上传签名（需登录）
+ *   GET  /system/cos/sign          — COS 上传签名（公开，无需登录）
  *   GET  /system/cos/download/sign — COS 下载签名（需登录）
  *   POST /system/feedback          — 反馈（需登录，异常场景）
  *
@@ -139,27 +139,29 @@ test.describe('发送验证码', () => {
   });
 });
 
-// ── COS 签名（需登录）────────────────────────────────────────────────────
+// ── COS 签名（公开接口）──────────────────────────────────────────────────
 
 test.describe('COS 签名', () => {
-  test('GET /system/cos/sign 未登录应被拒绝', async ({ anonApi, env }) => {
+  test('GET /system/cos/sign 未登录可获取上传签名', async ({ anonApi, env }) => {
     const url = `${env.apiBaseURL}${Endpoints.system.cosSign}?fileName=test.png&dir=thumbnails`;
-    const res = await anonApi.raw('get', `${Endpoints.system.cosSign}?fileName=test.png&dir=thumbnails`);
-    const body = res.status() === 200 ? await res.json() : null;
+    const { status, body } = await anonApi.get<{ uploadUrl: string; objectKey: string; accessUrl: string }>(
+      Endpoints.system.cosSign,
+      { query: { fileName: 'test.png', dir: 'thumbnails' } },
+    );
 
     await attachApiCallLog({
       testInfo: test.info(),
       name: '请求日志-COS签名-未登录.json',
       request: { method: 'GET', url, headers: {}, body: null },
-      response: { status: res.status(), headers: {}, body },
-      assertions: ['未登录访问 COS 签名应被拒绝'],
+      response: { status, headers: {}, body },
+      assertions: ['未登录访问 COS 签名应成功', '应返回 uploadUrl/objectKey/accessUrl'],
     });
 
-    if (res.status() === 200) {
-      expect(body.code, '未登录应返回非成功业务码').not.toBe(SUCCESS_CODE);
-    } else {
-      expect(res.status(), '未登录应返回 4xx').toBeGreaterThanOrEqual(400);
-    }
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '未登录访问 COS 签名应成功').toBe(SUCCESS_CODE);
+    expect(body.data?.uploadUrl, '应返回 uploadUrl').toBeTruthy();
+    expect(body.data?.objectKey, '应返回 objectKey').toBeTruthy();
+    expect(body.data?.accessUrl, '应返回 accessUrl').toBeTruthy();
   });
 
   test('GET /system/cos/sign 缺少 fileName 参数应失败', async ({ api, env }) => {

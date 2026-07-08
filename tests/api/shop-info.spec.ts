@@ -19,11 +19,6 @@ interface AttributeItem {
   name: string;
 }
 
-interface AttributeListData {
-  list: AttributeItem[];
-  total: number;
-}
-
 test.describe('店铺基础信息', () => {
   test.skip(({ env }) => !env.shopId, '未配置 SHOP_ID，跳过店铺基础信息用例');
 
@@ -98,8 +93,9 @@ test.describe('店铺基础信息', () => {
 
   test('GET /shop/:shopId/goods/attribute/list 返回属性列表', async ({ api, env }) => {
     const url = `${env.apiBaseURL}${Endpoints.shopAdmin.attributeList(env.shopId)}`;
-    const { status, body } = await api.get<AttributeListData>(
+    const { status, body } = await api.get<AttributeItem[]>(
       Endpoints.shopAdmin.attributeList(env.shopId),
+      { query: { pid: 0 } },
     );
 
     await attachApiCallLog({
@@ -112,7 +108,7 @@ test.describe('店铺基础信息', () => {
 
     expect(status, 'HTTP 状态码应为 200').toBe(200);
     expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
-    expect(Array.isArray(body.data.list), '属性列表应为数组').toBe(true);
+    expect(Array.isArray(body.data), '属性列表应为数组').toBe(true);
   });
 
   // ── 创建商品属性（异常场景）──────────────────────────────────────────

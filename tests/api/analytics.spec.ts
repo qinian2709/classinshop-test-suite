@@ -10,7 +10,7 @@ import { Endpoints, SUCCESS_CODE, attachApiCallLog } from '@shared';
  *   GET /shop/:shopId/analytics/products/list          — 商品分析列表
  *   GET /shop/:shopId/analytics/users                  — 用户分析
  *   GET /shop/:shopId/analytics/users/pay-distribution — 付费分布
- *   GET /shop/:shopId/analytics/report                 — 数据报表
+ *   POST /shop/:shopId/analytics/report                — 访问/浏览埋点上报
  *
  * author：qiukailiang
  */
@@ -150,32 +150,23 @@ test.describe('数据分析', () => {
     expect(Array.isArray(body.data.payDistribution), 'payDistribution 应为数组').toBe(true);
   });
 
-  // ── 数据报表 ──────────────────────────────────────────────────────────
+  // ── 埋点上报 ──────────────────────────────────────────────────────────
 
-  test('GET /analytics/report 返回数据报表', async ({ api, env }) => {
-    // 该接口在部分环境可能未部署，返回 404 时跳过而非报错
+  test('POST /analytics/report 店铺访问埋点上报应成功', async ({ api, env }) => {
     const url = `${env.apiBaseURL}${Endpoints.shopAdmin.analyticsReport(env.shopId)}`;
-    let status: number;
-    let body: unknown;
-    try {
-      const res = await api.get(Endpoints.shopAdmin.analyticsReport(env.shopId));
-      status = res.status;
-      body = res.body;
-    } catch {
-      test.skip(true, '接口返回非 JSON（可能未部署），跳过');
-      return;
-    }
+    const payload = { eventType: 1, targetId: 0 };
+    const { status, body } = await api.post(Endpoints.shopAdmin.analyticsReport(env.shopId), payload);
 
     await attachApiCallLog({
       testInfo: test.info(),
-      name: '请求日志-数据分析-报表.json',
-      request: { method: 'GET', url, headers: {}, body: null },
+      name: '请求日志-数据分析-埋点上报.json',
+      request: { method: 'POST', url, headers: {}, body: payload },
       response: { status, headers: {}, body },
       assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码'],
     });
 
     expect(status, 'HTTP 状态码应为 200').toBe(200);
-    expect((body as { code: number }).code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
   });
 
   // ── 鉴权 ──────────────────────────────────────────────────────────────

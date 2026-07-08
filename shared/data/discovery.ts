@@ -148,16 +148,65 @@ export interface AvailableCoupon {
   name?: string;
 }
 
-/** 找一张可领取的优惠券（依赖店铺维度，需 X-Shop-Domain）。 */
-export async function pickAvailableCoupon(api: ApiHelper): Promise<AvailableCoupon | null> {
-  const { body } = await api.get(Endpoints.shop.availableCoupons);
+export interface PickAvailableCouponInput {
+  goodsId?: number;
+  skuId?: number;
+}
+
+/**
+ * 下单算价时查询「当前用户已领、且适用于该商品」的优惠券（GET /shop/coupon/available）。
+ */
+export async function pickAvailableCoupon(
+  api: ApiHelper,
+  input: PickAvailableCouponInput = {},
+): Promise<AvailableCoupon | null> {
+  if (!input.goodsId || !input.skuId) return null;
+  const { body } = await api.get(Endpoints.shop.availableCoupons, {
+    query: { goodsId: input.goodsId, skuId: input.skuId },
+  });
   if (body.code !== SUCCESS_CODE) return null;
   for (const c of asArray(body.data)) {
-    const couponId = pickNumber(c, ['id', 'couponId', 'coupon_id']);
+    const couponId = pickNumber(c, ['id', 'couponId', 'coupon_id', 'userCouponId', 'user_coupon_id']);
     if (couponId) {
       const name = c['name'];
       return { couponId, name: typeof name === 'string' ? name : undefined };
     }
+  }
+  return null;
+}
+
+/**
+ * 找一张 C 端仍可领取的优惠券：商家端列表筛库存 → mobile 落地页确认 canReceive。
+ */
+export async function pickReceivableCoupon(
+  merchantApi: ApiHelper,
+  mobileApi: ApiHelper,
+  shopId: string | number,
+): Promise<AvailableCoupon | null> {
+  const { body } = await merchantApi.get(Endpoints.shopAdmin.couponList(shopId), {
+    query: { page: 1, limit: 30 },
+  });
+  if (body.code !== SUCCESS_CODE) return null;
+
+  for (const c of asArray(body.data)) {
+    const couponId = pickNumber(c, ['id', 'couponId', 'coupon_id']);
+    if (!couponId) continue;
+
+    const status = pickNumber(c, ['status', 'displayStatus', 'display_status']);
+    const stockTotal = pickNumber(c, ['stockTotal', 'stock_total']) ?? 0;
+    const stockIssued = pickNumber(c, ['stockIssued', 'stock_issued']) ?? 0;
+    if (status !== 1 && status !== undefined && status !== 0) continue;
+    if (stockTotal > 0 && stockIssued >= stockTotal) continue;
+
+    const landing = await mobileApi.get(Endpoints.shop.couponDetail(couponId));
+    if (landing.body.code !== SUCCESS_CODE) continue;
+
+    const landingData = landing.body.data as Record<string, unknown> | undefined;
+    const canReceive = landingData?.canReceive ?? landingData?.can_receive;
+    if (canReceive !== true) continue;
+
+    const name = c['name'];
+    return { couponId, name: typeof name === 'string' ? name : undefined };
   }
   return null;
 }

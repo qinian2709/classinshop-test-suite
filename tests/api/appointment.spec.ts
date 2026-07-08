@@ -1,6 +1,50 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE, attachApiCallLog } from '@shared';
 
+/** 本周一 00:00 ~ 下周一 00:00（秒） */
+function currentWeekUnixRange(): { startUnix: number; endUnix: number } {
+  const now = new Date();
+  const day = now.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() + mondayOffset);
+  const nextMonday = new Date(monday);
+  nextMonday.setDate(nextMonday.getDate() + 7);
+  return {
+    startUnix: Math.floor(monday.getTime() / 1000),
+    endUnix: Math.floor(nextMonday.getTime() / 1000),
+  };
+}
+
+/** 今日 00:00 ~ 90 天后 00:00（秒） */
+function teacherSlotsUnixRange(): { startUnix: number; endUnix: number } {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 90);
+  return {
+    startUnix: Math.floor(start.getTime() / 1000),
+    endUnix: Math.floor(end.getTime() / 1000),
+  };
+}
+
+function extractTeacherList(data: unknown): unknown[] | undefined {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object' && Array.isArray((data as Record<string, unknown>).list)) {
+    return (data as Record<string, unknown>).list as unknown[];
+  }
+  return undefined;
+}
+
+function pickTeacherId(teacher: unknown): number | undefined {
+  if (!teacher || typeof teacher !== 'object') return undefined;
+  const t = teacher as Record<string, unknown>;
+  const id = t.id ?? t.teacherId ?? t.teacher_id;
+  const n = Number(id);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 /**
  * 约课管理（需登录）。
  * 覆盖接口：
@@ -134,8 +178,11 @@ test.describe('商家端·课表总览', () => {
   test.skip(({ env }) => !env.shopId, '未配置 SHOP_ID，跳过课表总览用例');
 
   test('GET /appointment/schedule 返回课表数据', async ({ api, env }) => {
-    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentSchedule(env.shopId)}`;
-    const { status, body } = await api.get(Endpoints.shopAdmin.appointmentSchedule(env.shopId));
+    const { startUnix, endUnix } = currentWeekUnixRange();
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentSchedule(env.shopId)}?start_unix=${startUnix}&end_unix=${endUnix}`;
+    const { status, body } = await api.get(Endpoints.shopAdmin.appointmentSchedule(env.shopId), {
+      query: { start_unix: startUnix, end_unix: endUnix },
+    });
 
     await attachApiCallLog({
       testInfo: test.info(),
@@ -532,9 +579,21 @@ test.describe('商家端·改约审批', () => {
   });
 
   test('GET /appointment/changes/teachers 返回改约老师下拉', async ({ api, env }) => {
-    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentChangeTeachers(env.shopId)}`;
+    interface RecordItem { id: number }
+    interface RecordList { list: RecordItem[]; total: number }
+
+    const { body: listBody } = await api.get<RecordList>(
+      Endpoints.shopAdmin.appointmentRecords(env.shopId),
+      { query: { page: 1, limit: 1 } },
+    );
+    expect(listBody.code, '获取预约记录列表应成功').toBe(SUCCESS_CODE);
+    test.skip(!listBody.data?.list?.[0], '当前无预约记录，跳改约老师下拉');
+
+    const appointmentId = listBody.data!.list[0]!.id;
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentChangeTeachers(env.shopId)}?appointment_id=${appointmentId}`;
     const { status, body } = await api.get(
       Endpoints.shopAdmin.appointmentChangeTeachers(env.shopId),
+      { query: { appointment_id: appointmentId } },
     );
 
     await attachApiCallLog({
@@ -627,9 +686,20 @@ test.describe('商家端·老师管理', () => {
   });
 
   test('GET /appointment/teacher-slots 返回老师时段', async ({ api, env }) => {
-    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentTeacherSlots(env.shopId)}`;
+    const { body: teachersBody } = await api.get(Endpoints.shopAdmin.appointmentTeachers(env.shopId));
+    expect(teachersBody.code, '获取约课老师列表应成功').toBe(SUCCESS_CODE);
+
+    const teacherList = extractTeacherList(teachersBody.data);
+    test.skip(!teacherList?.length, '当前无约课老师，跳过老师时段');
+
+    const teacherId = pickTeacherId(teacherList![0]);
+    test.skip(!teacherId, '无法解析老师 ID');
+
+    const { startUnix, endUnix } = teacherSlotsUnixRange();
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentTeacherSlots(env.shopId)}?teacher_id=${teacherId}&start_unix=${startUnix}&end_unix=${endUnix}`;
     const { status, body } = await api.get(
       Endpoints.shopAdmin.appointmentTeacherSlots(env.shopId),
+      { query: { teacher_id: teacherId, start_unix: startUnix, end_unix: endUnix } },
     );
 
     await attachApiCallLog({

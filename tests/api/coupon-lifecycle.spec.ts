@@ -1,6 +1,6 @@
 import { test, expect } from '@shared';
 import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
-import { accounts, env as configEnv, formatAuthorizationHeader } from '@config';
+import { accounts, env as configEnv, formatAuthorizationHeader, hasApiCredential, hasMobileCredential } from '@config';
 import type { ApiResponse } from '@shared';
 import type { TestInfo } from '@playwright/test';
 
@@ -240,8 +240,8 @@ async function voidCouponCode(
 }
 
 test.describe('优惠券生命周期', () => {
-  test.skip(!accounts.token, '未配置商家 TEST_TOKEN，跳过商家优惠券生命周期用例');
-  test.skip(!accounts.mobileToken, '未配置 MOBILE_TEST_TOKEN，跳过 mobile 领券链路');
+  test.skip(!hasApiCredential(), '未配置商家/教师端鉴权凭据（TEST_TOKEN、TEST_PHONE_NUMBER 或签名），跳过商家优惠券生命周期用例');
+  test.skip(!hasMobileCredential(), '未配置用户/C 端鉴权凭据（MOBILE_TEST_TOKEN 或 MOBILE_TEST_PHONE_NUMBER），跳过 mobile 领券链路');
 
   test('商家创建优惠券 -> mobile 领取 -> 我的券包校验 -> 清理', async ({ data }) => {
     const testInfo = test.info();

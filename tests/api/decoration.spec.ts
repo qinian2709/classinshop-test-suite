@@ -47,21 +47,19 @@ test.describe('店铺装修', () => {
     expect(body.data, '装修配置数据应存在').toBeTruthy();
   });
 
-  test('无权限店铺的装修配置应被拒绝', async ({ api, env }) => {
-    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.decorationGet(999999999)}`;
-    const { status, body } = await api.get(Endpoints.shopAdmin.decorationGet(999999999));
+  test('GET /decoration 非法 shopId 应失败', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.decorationGet(0)}`;
+    const { status, body } = await api.get(Endpoints.shopAdmin.decorationGet(0));
 
     await attachApiCallLog({
       testInfo: test.info(),
-      name: '请求日志-装修配置-无权限.json',
+      name: '请求日志-装修配置-非法shopId.json',
       request: { method: 'GET', url, headers: {}, body: null },
       response: { status, headers: {}, body },
-      assertions: ['访问无权限店铺应返回非成功业务码或数据为空'],
+      assertions: ['非法 shopId 应返回非成功业务码'],
     });
 
-    // 装修接口对无效 shopId 可能返回空数据或非成功码，均属正常拒绝
-    const isRejected = body.code !== SUCCESS_CODE || !body.data;
-    expect(isRejected, '访问无权限店铺应被拒绝（非成功码或数据为空）').toBe(true);
+    expect(body.code, '非法 shopId 应返回非成功业务码').not.toBe(SUCCESS_CODE);
   });
 
   // ── 页面列表 ──────────────────────────────────────────────────────────

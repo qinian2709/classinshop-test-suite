@@ -1,6 +1,6 @@
 import { test, expect } from '@shared';
 import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
-import { accounts, env as configEnv, formatAuthorizationHeader } from '@config';
+import { accounts, env as configEnv, formatAuthorizationHeader, hasApiCredential } from '@config';
 import type { ListData } from '@shared';
 import type { Goods } from '@shared';
 import type { ApiResponse } from '@shared';
@@ -143,7 +143,7 @@ async function resolveShopContext(testInfo: TestInfo, preferredShopId?: string) 
  * 4. GET /shop/goods -> 提取 goodsId，作为 GET /shop/goods/:id 的下游入参。
  */
 test.describe('店铺与商品目录', () => {
-  test.skip(!accounts.token, '未配置 TEST_TOKEN，跳过需登录态链路');
+  test.skip(!hasApiCredential(), '未配置商家/教师端鉴权凭据（TEST_TOKEN、TEST_PHONE_NUMBER 或签名），跳过需登录态链路');
 
   test('GET /shop/info 返回当前店铺信息', async ({ env }) => {
     const shop = await resolveShopContext(test.info(), env.shopId);
