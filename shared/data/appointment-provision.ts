@@ -124,7 +124,7 @@ export async function provisionStudentAppointmentOrderItem(
   const goods = await provisionPublishedAppointmentGoods(merchantApi, {
     shopId: options.shopId,
     data: options.data,
-    keep: options.keep ?? true,
+    keep: options.keep,
     price: 0,
     namePrefix: 'flow约课测试课',
   });

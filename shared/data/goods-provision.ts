@@ -224,7 +224,7 @@ async function resolveAppointmentTeacher(
 export interface ProvisionPublishedGoodsOptions {
   shopId: string | number;
   data?: DataRegistry;
-  /** 默认 true：保留测试商品便于排查；传 false 或 KEEP_TEST_GOODS=0 时注册删除 */
+  /** 默认 false：用例结束后经 data 登记删除；仅 KEEP_TEST_GOODS=1 或 keep:true 时保留 */
   keep?: boolean;
   price?: number;
   namePrefix?: string;
@@ -237,8 +237,7 @@ interface PublishedGoodsResult extends SampleGoods {
 
 function shouldKeepGoods(options: ProvisionPublishedGoodsOptions): boolean {
   if (options.keep !== undefined) return options.keep;
-  if (process.env.KEEP_TEST_GOODS === '0') return false;
-  return process.env.KEEP_TEST_GOODS === '1' || options.price === 0;
+  return process.env.KEEP_TEST_GOODS === '1';
 }
 
 async function publishAndValidate(

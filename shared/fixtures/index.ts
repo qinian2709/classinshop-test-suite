@@ -195,13 +195,13 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     await use(coupon as AvailableCoupon);
   },
 
-  publishedSampleGoods: async ({ api, env }, use) => {
+  publishedSampleGoods: async ({ api, data, env }, use) => {
     if (!env.shopId) {
       test.skip(true, '未配置 SHOP_ID，跳过需上架测试商品的链路');
     }
     const goods = await provisionPublishedFixedGoods(api, {
       shopId: env.shopId,
-      keep: true,
+      data,
       price: 0,
       namePrefix: 'flow固定课',
     });
@@ -218,7 +218,7 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     await use(item as AppointmentOrderItem);
   },
 
-  studentAppointmentOrderItem: async ({ api, mobileApi, env }, use) => {
+  studentAppointmentOrderItem: async ({ api, mobileApi, data, env }, use) => {
     if (!env.shopId) {
       test.skip(true, '未配置 SHOP_ID，跳过需上架零元约课商品的链路');
     }
@@ -227,7 +227,7 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     }
     const item = await provisionStudentAppointmentOrderItem(api, mobileApi, {
       shopId: env.shopId,
-      keep: true,
+      data,
     });
     test.skip(!item, '无法准备学生约课订单项（需启用约课老师），跳过约课链路');
     await use(item as StudentAppointmentOrderItem);
