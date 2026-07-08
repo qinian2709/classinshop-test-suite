@@ -1,6 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { accounts, env } from '@config';
+import { resolveAuthTokens } from '../../../shared/auth/login.js';
 import { installMobileAuth } from '../helpers/auth.js';
 
 type Fixtures = {
@@ -10,8 +11,9 @@ type Fixtures = {
 
 export const test = base.extend<Fixtures>({
   authedMobilePage: async ({ page }, use) => {
+    await resolveAuthTokens();
     if (!accounts.mobileToken) {
-      test.skip(true, '未配置 MOBILE_TEST_TOKEN，跳过 H5 登录态用例');
+      test.skip(true, '未配置用户端鉴权凭据（MOBILE_TEST_TOKEN 或 MOBILE_TEST_PHONE_NUMBER），跳过 H5 登录态用例');
     }
 
     await installMobileAuth(page, accounts.mobileToken);

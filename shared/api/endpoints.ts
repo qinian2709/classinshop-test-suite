@@ -14,6 +14,7 @@ export const Endpoints = {
   },
   user: {
     loginBySign: '/user/loginbysign',
+    loginByWhiteUser: '/user/loginbywhiteuser',
     signup: '/user/signup',
     logout: '/user/logout',
     authUser: '/auth/user',

@@ -42,10 +42,15 @@ TEST_ENV=im pnpm test:e2e:web
 
 ## 3. 鉴权（获取 JWT）
 
-需要登录的接口用例依赖一个 accessToken，两种提供方式（见 `config/accounts.ts`）：
+需要登录的接口用例依赖一个 accessToken，三种提供方式（见 `config/accounts.ts`）：
 
 1. 直接给 token（推荐，最稳定）：在 `.env.local` 设置 `TEST_TOKEN=<accessToken>`。
-2. 签名登录：设置 `TEST_EEO_UID` / `TEST_SIGN_KEY` / `TEST_SIGN_TIMESTAMP`，套件会调用
+2. 白名单手机号登录（推荐本地开发，无需手动复制 token）：
+   - 商家/教师端：`TEST_PHONE_NUMBER`（可选 `TEST_NATION_CODE`，默认 `86`）→ 自动用于 `TEST_TOKEN`、`MINIPROGRAM_TEACHER_TEST_TOKEN`
+   - 用户/C 端：`MOBILE_TEST_PHONE_NUMBER`（可选 `MOBILE_TEST_NATION_CODE`，默认 `86`）→ 自动用于 `MOBILE_TEST_TOKEN`、`MINIPROGRAM_USER_TEST_TOKEN`
+   - 套件启动时各侧最多调用 1 次 `POST /api/v1/user/loginbywhiteuser`，token 缓存在内存中
+   - 用户须在 `inspection_login` 白名单中（见 `classinshop-go/scripts/init_web_config.sql`）
+3. 签名登录：设置 `TEST_EEO_UID` / `TEST_SIGN_KEY` / `TEST_SIGN_TIMESTAMP`，套件会调用
    `POST /api/v1/user/loginbysign` 换取 token（见 `shared/auth/login.ts`）。
 
 > 未配置任何凭据时，依赖 `token` fixture 的用例会自动 `skip`，公开接口（如 `/system/info`）仍会执行。

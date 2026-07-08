@@ -46,7 +46,11 @@ The fixture reads credentials from `@config`:
 - `TEST_TOKEN` is preferred.
 - `TEST_TOKEN` may be either a raw JWT or a complete `Bearer xxx` value. Use `formatAuthorizationHeader()` from `@config` when building headers manually.
 - `MOBILE_TEST_TOKEN` is a separate H5/C-end user token. Use it only when the API scenario explicitly exercises C-end buyer behavior such as mobile coupon receive, user coupon list, or mobile order flows. Do not mix it with merchant/admin `TEST_TOKEN`.
-- Sign-login credentials are supported by `getAccessToken`.
+- Whitelist phone login when static tokens are absent:
+  - Merchant/teacher: `TEST_PHONE_NUMBER` (+ optional `TEST_NATION_CODE`, default `86`) → fills `TEST_TOKEN` and `MINIPROGRAM_TEACHER_TEST_TOKEN`
+  - User/C-end: `MOBILE_TEST_PHONE_NUMBER` (+ optional `MOBILE_TEST_NATION_CODE`, default `86`) → fills `MOBILE_TEST_TOKEN` and `MINIPROGRAM_USER_TEST_TOKEN`
+  - Resolved once per worker via `resolveAuthTokens()`; users must be in the `inspection_login` whitelist
+- Sign-login credentials are supported by `getAccessToken` as a fallback after merchant whitelist login.
 - Missing auth credentials should skip dependent tests instead of failing the whole suite.
 
 Do not hardcode tokens, cookies, or secrets in specs. Do not require cookies when `TEST_TOKEN` is sufficient.

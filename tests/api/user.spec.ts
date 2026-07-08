@@ -1,7 +1,7 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE } from '@shared';
-import { env as configEnv } from '@config';
-import type { ListData, User } from '@shared';
+import { env as configEnv, accounts, hasWhiteUserCredential, hasMobileWhiteUserCredential } from '@config';
+import type { ListData, User, LoginResult } from '@shared';
 
 interface MerchantShop {
   orgId: number;
@@ -12,6 +12,30 @@ interface MerchantShop {
  * 同时间接验证了登录链路（getAccessToken）是通的。
  */
 test.describe('用户中心', () => {
+  test('POST /user/loginbywhiteuser 商家/教师端白名单登录返回 token', async ({ anonApi }) => {
+    test.skip(!hasWhiteUserCredential(), '未配置 TEST_PHONE_NUMBER，跳过商家/教师端白名单登录用例');
+
+    const { body } = await anonApi.post<LoginResult>(Endpoints.user.loginByWhiteUser, {
+      phone_number: accounts.whiteUser.phoneNumber,
+      nation_code: accounts.whiteUser.nationCode,
+    });
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(body.data?.accessToken, '应返回 accessToken').toBeTruthy();
+    expect(body.data?.refreshToken, '应返回 refreshToken').toBeTruthy();
+  });
+
+  test('POST /user/loginbywhiteuser 用户端白名单登录返回 token', async ({ anonApi }) => {
+    test.skip(!hasMobileWhiteUserCredential(), '未配置 MOBILE_TEST_PHONE_NUMBER，跳过用户端白名单登录用例');
+
+    const { body } = await anonApi.post<LoginResult>(Endpoints.user.loginByWhiteUser, {
+      phone_number: accounts.mobileWhiteUser.phoneNumber,
+      nation_code: accounts.mobileWhiteUser.nationCode,
+    });
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(body.data?.accessToken, '应返回 accessToken').toBeTruthy();
+    expect(body.data?.refreshToken, '应返回 refreshToken').toBeTruthy();
+  });
+
   test('GET /auth/user 返回当前登录用户', async ({ api }) => {
     const { body } = await api.get<User>(Endpoints.user.authUser);
     expect(body.code).toBe(SUCCESS_CODE);

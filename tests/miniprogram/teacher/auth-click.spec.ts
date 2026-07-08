@@ -3,6 +3,7 @@ import type MiniProgram from 'miniprogram-automator/out/MiniProgram.js';
 import type Page from 'miniprogram-automator/out/Page.js';
 import type Element from 'miniprogram-automator/out/Element.js';
 import { accounts } from '@config';
+import { resolveAuthTokens } from '../../../shared/auth/login.js';
 import { canRun, launch, safeClose } from '../helpers/automator.js';
 import { buildTeacherAuthState, hasMiniProgramAuth, installMiniProgramAuth } from '../helpers/auth.js';
 import { attachFailureScreenshot, attachStepScreenshot } from '../helpers/screenshots.js';
@@ -37,12 +38,13 @@ async function tapText(page: Page, text: string): Promise<void> {
 test.describe('教师端小程序登录态与点击 @miniprogram', () => {
   let mp: MiniProgram | undefined;
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     const { ok, reason } = canRun('teacher');
     test.skip(!ok, reason ?? '教师端小程序运行条件不满足');
+    await resolveAuthTokens();
     test.skip(
       !accounts.miniprogram.teacherToken,
-      '未配置 MINIPROGRAM_TEACHER_TEST_TOKEN，跳过教师端小程序登录态注入用例',
+      '未配置教师端鉴权凭据（MINIPROGRAM_TEACHER_TEST_TOKEN 或 TEST_PHONE_NUMBER），跳过教师端小程序登录态注入用例',
     );
   });
 

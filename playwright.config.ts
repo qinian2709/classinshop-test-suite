@@ -37,6 +37,7 @@ export default defineConfig({
       testDir: 'tests/api',
       // 被测环境前置 WAF 会拦截并发突发请求（返回 403）。接口用例串行执行，避免误判。
       fullyParallel: false,
+      workers: 1,
       use: {
         baseURL: env.apiBaseURL,
         extraHTTPHeaders: {
