@@ -1,6 +1,6 @@
 import { test as base, expect } from '@playwright/test';
 import { env, accounts, hasApiCredential } from '../../config/index.js';
-import { getAccessToken } from '../auth/login.js';
+import { resolveAuthTokens } from '../auth/login.js';
 import { DataRegistry } from '../data/cleanup.js';
 import {
   pickGoods,
@@ -20,6 +20,8 @@ import { ApiHelper } from './api-helper.js';
 export interface ApiWorkerFixtures {
   /** 已登录 token（worker 级，避免每个用例重复登录） */
   workerToken: string;
+  /** worker 启动时自动解析双端 token（auto fixture） */
+  bootstrapAuth: void;
 }
 
 export interface ApiFixtures {
@@ -54,10 +56,18 @@ function shopHeaders(): Record<string, string> {
 export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
   workerToken: [
     async ({}, use) => {
-      const token = hasApiCredential() ? await getAccessToken() : '';
-      await use(token);
+      await resolveAuthTokens();
+      await use(accounts.token);
     },
     { scope: 'worker' },
+  ],
+
+  bootstrapAuth: [
+    async ({}, use) => {
+      await resolveAuthTokens();
+      await use(undefined);
+    },
+    { scope: 'worker', auto: true },
   ],
 
   env: async ({}, use) => {
@@ -65,8 +75,8 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
   },
 
   token: async ({ workerToken }, use) => {
-    if (!hasApiCredential()) {
-      test.skip(true, '未配置鉴权凭据（TEST_TOKEN 或签名），跳过需登录用例');
+    if (!hasApiCredential() && !workerToken) {
+      test.skip(true, '未配置商家/教师端鉴权凭据（TEST_TOKEN、TEST_PHONE_NUMBER 或签名），跳过需登录用例');
     }
     await use(workerToken);
   },
@@ -80,8 +90,8 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
   },
 
   api: async ({ workerToken }, use) => {
-    if (!hasApiCredential()) {
-      test.skip(true, '未配置鉴权凭据（TEST_TOKEN 或签名），跳过需登录用例');
+    if (!hasApiCredential() && !workerToken) {
+      test.skip(true, '未配置商家/教师端鉴权凭据（TEST_TOKEN、TEST_PHONE_NUMBER 或签名），跳过需登录用例');
     }
     const helper = new ApiHelper(env.apiBaseURL, {
       ...browserHeaders(),

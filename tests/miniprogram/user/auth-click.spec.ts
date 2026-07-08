@@ -3,6 +3,7 @@ import type MiniProgram from 'miniprogram-automator/out/MiniProgram.js';
 import type Page from 'miniprogram-automator/out/Page.js';
 import type Element from 'miniprogram-automator/out/Element.js';
 import { accounts } from '@config';
+import { resolveAuthTokens } from '../../../shared/auth/login.js';
 import { canRun, launch, safeClose } from '../helpers/automator.js';
 import { buildStudentAuthState, hasMiniProgramAuth, installMiniProgramAuth } from '../helpers/auth.js';
 import { attachFailureScreenshot, attachStepScreenshot } from '../helpers/screenshots.js';
@@ -37,10 +38,11 @@ async function tapText(page: Page, text: string): Promise<void> {
 test.describe('用户端小程序登录态与点击 @miniprogram', () => {
   let mp: MiniProgram | undefined;
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     const { ok, reason } = canRun('user');
     test.skip(!ok, reason ?? '用户端小程序运行条件不满足');
-    test.skip(!accounts.miniprogram.userToken, '未配置 MINIPROGRAM_USER_TEST_TOKEN，跳过用户端小程序登录态注入用例');
+    await resolveAuthTokens();
+    test.skip(!accounts.miniprogram.userToken, '未配置用户端鉴权凭据（MINIPROGRAM_USER_TEST_TOKEN 或 MOBILE_TEST_PHONE_NUMBER），跳过用户端小程序登录态注入用例');
   });
 
   test.afterEach(async ({}, testInfo) => {
