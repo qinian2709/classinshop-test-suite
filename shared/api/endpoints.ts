@@ -260,7 +260,10 @@ export const Endpoints = {
     ordersList: (shopId: string | number) => `/shop/${shopId}/orders`,
     orderTracking: (shopId: string | number, orderId: string | number) =>
       `/shop/${shopId}/orders/${orderId}/tracking`,
-    // 退款申请
+    // 商家退款（直接退款）
+    refundList: (shopId: string | number) => `/shop/${shopId}/refund`,
+    refundBookingPreviewShop: (shopId: string | number) => `/shop/${shopId}/refund/booking-preview`,
+    // 退款申请（用户发起，商家审核）
     refundRequestList: (shopId: string | number) => `/shop/${shopId}/refund/requests`,
     refundRequestDetail: (shopId: string | number, id: string | number) =>
       `/shop/${shopId}/refund/requests/${id}`,
@@ -294,6 +297,8 @@ export const Endpoints = {
     overviewTodo: (shopId: string | number) => `/shop/${shopId}/overview/todo`,
     overviewGoods: (shopId: string | number) => `/shop/${shopId}/overview/goods`,
     overviewDynamics: (shopId: string | number) => `/shop/${shopId}/overview/dynamics`,
+    overviewDynamicArticle: (shopId: string | number, articleId: string | number) =>
+      `/shop/${shopId}/overview/dynamics/${articleId}`,
     // 营销活动
     activityMultiCourseList: (shopId: string | number) =>
       `/shop/${shopId}/activity/multi-course/list`,
@@ -331,8 +336,13 @@ export const Endpoints = {
     // 分销
     distributionGoodsList: (shopId: string | number) =>
       `/shop/${shopId}/distribution/goods/list`,
+    distributionGoodsToAddList: (shopId: string | number) =>
+      `/shop/${shopId}/distribution/goods/list/to_add`,
     distributionOrder: (shopId: string | number) => `/shop/${shopId}/distribution/order`,
+    distributionPromotion: (shopId: string | number) => `/shop/${shopId}/distribution/promotion`,
     promotionGoods: (shopId: string | number) => `/shop/${shopId}/spread/goods`,
+    promotionGoodsInfo: (shopId: string | number) => `/shop/${shopId}/spread/goods/info`,
+    promotionMerchants: (shopId: string | number) => `/shop/${shopId}/spread/merchants`,
     promotionInfo: (shopId: string | number) => `/shop/${shopId}/spread/info`,
     // 推广员
     salersList: (shopId: string | number) => `/shop/${shopId}/salers`,

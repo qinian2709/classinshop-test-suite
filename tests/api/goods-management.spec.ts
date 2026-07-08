@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import { test, expect } from '@shared';
 import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
-import { accounts, env as configEnv, formatAuthorizationHeader } from '@config';
+import { accounts, env as configEnv, formatAuthorizationHeader, hasApiCredential } from '@config';
 import type { ApiResponse } from '@shared';
 import type { TestInfo } from '@playwright/test';
 
@@ -459,10 +459,10 @@ function payloadFromDetail(detail: GoodsDetail, overrides: Partial<GoodsPayload>
 /**
  * 商品管理路径：
  * 固定课：我的店铺 -> ClassIn 班级 -> 创建草稿 -> 编辑草稿绑定班级 -> 上架 -> 详情校验 -> 删除清理。
- * 预约课：我的店铺 -> 启用老师 -> 创建草稿 -> 编辑草稿 -> 上架 -> 详情校验 -> 删除清理。
+ * 预约课：我的店铺 -> 启用老师 -> 创建草稿 -> 编辑草稿 -> 上架 -> 详情校验 ->（默认）删除清理；KEEP_TEST_GOODS=1 时保留商品。
  */
 test.describe('商品管理', () => {
-  test.skip(!accounts.token, '未配置 TEST_TOKEN，跳过需登录态商品管理链路');
+  test.skip(!hasApiCredential(), '未配置商家鉴权凭据，跳过需登录态商品管理链路');
 
   test('固定课：创建草稿 -> 编辑草稿 -> 上架商品', async ({ env, data }) => {
     const testInfo = test.info();
