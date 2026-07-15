@@ -102,7 +102,6 @@ test-api:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    optional: true
     expose_as: 'Enhanced Report API'
     paths:
       - reports/
@@ -129,7 +128,6 @@ test-e2e:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    optional: true
     expose_as: 'Enhanced Report E2E'
     paths:
       - reports/
@@ -174,7 +172,6 @@ pages:
     url: $CI_PAGES_URL/enhanced-report.html
   artifacts:
     when: always
-    optional: true
     paths:
       - public
     expire_in: 1 week
