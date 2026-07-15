@@ -19,19 +19,23 @@ interface Options {
   file?: string;
   report: boolean;
   allure: boolean;
+  enhanced: boolean;
   open: boolean;
   notify: boolean;
   passthrough: string[];
 }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DEFAULT_ALLURE_RESULTS_PATH = 'allure-results';
+const REPORTS_ROOT = 'reports';
+const LATEST_LINK = path.join(REPORTS_ROOT, 'latest');
 
 interface ReportPaths {
   runId: string;
   runDir: string;
   htmlDir: string;
   htmlIndex: string;
+  enhancedDir: string;
+  enhancedIndex: string;
   allureResultsDir: string;
   allureHtmlDir: string;
   allureIndex: string;
@@ -43,10 +47,10 @@ function usage(exitCode = 1): never {
   console.error(`
 Usage:
   pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
-  pnpm test:core -- --env 14 --allure --open
+  pnpm test:core -- --env 14 --open
+  pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --open
   pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure --open
-  pnpm test:mp:user -- --env 14 --file tests/miniprogram/user/auth-click.spec.ts --allure --open
-  pnpm test:mp:user -- --env 14 --allure --open
+  pnpm test:mp:user -- --env 14 --file tests/miniprogram/user/auth-click.spec.ts --open
   pnpm test:mp:teacher -- --env 14 --allure --open
 
 Options:
@@ -54,8 +58,9 @@ Options:
   -p, --project <name>        项目，默认按 --file 推断；支持 api/e2e-web/e2e-mobile/core/miniprogram/miniprogram-user/miniprogram-teacher
   -f, --file <spec path>     指定用例文件；不传则按项目运行默认目录
   --report                   测试结束后打开 Playwright HTML 报告（兼容旧写法）
+  --enhanced                 显式打开 Enhanced HTML 报告（也可单独使用；报告本身每次运行都会生成）
   --allure                   测试结束后生成 Allure HTML 报告
-  --open                     测试结束后打开报告；配合 --allure 时打开 Allure，否则打开 Playwright HTML
+  --open                     测试结束后打开报告：默认 Enhanced；配合 --allure 打开 Allure；配合 --report 打开 Playwright HTML
   --notify                   测试结束后模拟发送企微机器人通知
   --                         后面的参数原样透传给 playwright test
 `);
@@ -107,6 +112,7 @@ function isRunnerOption(arg: string): boolean {
     arg === '--file' ||
     arg.startsWith('--file=') ||
     arg === '--report' ||
+    arg === '--enhanced' ||
     arg === '--allure' ||
     arg === '--open' ||
     arg === '--notify' ||
@@ -120,6 +126,7 @@ function parseArgs(argv: string[]): Options {
     env: parseEnv(process.env.TEST_ENV ?? '13'),
     project: undefined,
     report: false,
+    enhanced: false,
     allure: false,
     open: false,
     notify: false,
@@ -180,6 +187,11 @@ function parseArgs(argv: string[]): Options {
 
     if (arg === '--report') {
       options.report = true;
+      continue;
+    }
+
+    if (arg === '--enhanced') {
+      options.enhanced = true;
       continue;
     }
 
@@ -277,18 +289,42 @@ function buildRunId(project: ProjectName): string {
 
 function buildReportPaths(project: ProjectName): ReportPaths {
   const runId = buildRunId(project);
-  const runDir = path.join('reports', 'runs', runId);
+  const runDir = path.join(REPORTS_ROOT, 'runs', runId);
+  const enhancedDir = path.join(runDir, 'enhanced');
   return {
     runId,
     runDir,
     htmlDir: path.join(runDir, 'html'),
     htmlIndex: path.join(runDir, 'html', 'index.html'),
+    enhancedDir,
+    enhancedIndex: path.join(enhancedDir, 'enhanced-report.html'),
     allureResultsDir: path.join(runDir, 'allure-results'),
     allureHtmlDir: path.join(runDir, 'allure-html'),
     allureIndex: path.join(runDir, 'allure-html', 'index.html'),
     junitFile: path.join(runDir, 'junit.xml'),
     artifactsDir: path.join(runDir, 'artifacts'),
   };
+}
+
+/** Point reports/latest at this run so package scripts and CI have a stable path. */
+function updateLatestLink(reportPaths: ReportPaths): void {
+  const reportsAbs = path.join(ROOT, REPORTS_ROOT);
+  const latestAbs = path.join(ROOT, LATEST_LINK);
+  const runAbs = path.join(ROOT, reportPaths.runDir);
+  fs.mkdirSync(reportsAbs, { recursive: true });
+  fs.mkdirSync(runAbs, { recursive: true });
+  fs.rmSync(latestAbs, { recursive: true, force: true });
+  const relativeTarget = path.relative(reportsAbs, runAbs);
+  try {
+    fs.symlinkSync(relativeTarget, latestAbs, 'dir');
+    console.log(`[test] reports/latest -> ${relativeTarget}`);
+  } catch (error) {
+    // Symlink may fail on some Windows setups; fall back to copying a pointer file.
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[test] Failed to create reports/latest symlink (${message}); writing pointer file.`);
+    fs.mkdirSync(latestAbs, { recursive: true });
+    fs.writeFileSync(path.join(latestAbs, 'RUN_DIR.txt'), `${reportPaths.runDir}\n`, 'utf8');
+  }
 }
 
 function runPlaywright(
@@ -358,7 +394,6 @@ function directoryHasEntries(relativePath: string): boolean {
 }
 
 function cleanAllureOutput(reportPaths: ReportPaths): void {
-  fs.rmSync(path.join(ROOT, DEFAULT_ALLURE_RESULTS_PATH), { recursive: true, force: true });
   fs.rmSync(resolveRootPath(reportPaths.allureResultsDir), { recursive: true, force: true });
   fs.rmSync(resolveRootPath(reportPaths.allureHtmlDir), { recursive: true, force: true });
 }
@@ -416,6 +451,33 @@ function openAllureReport(reportPaths: ReportPaths, allureReportGenerated: boole
   return 0;
 }
 
+function openFileInBrowser(filePath: string): number {
+  const absolute = resolveRootPath(filePath);
+  if (!fs.existsSync(absolute)) {
+    console.warn(`[test] Skip opening report: ${filePath} does not exist.`);
+    return 1;
+  }
+
+  const command =
+    process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
+  const args = process.platform === 'win32' ? ['/c', 'start', '', absolute] : [absolute];
+  const child = spawn(command, args, {
+    cwd: ROOT,
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.on('error', (error) => {
+    console.error(`[test] Failed to open report: ${error.message}`);
+  });
+  child.unref();
+  console.log(`[test] Opened report: ${absolute}`);
+  return 0;
+}
+
+function openEnhancedReport(reportPaths: ReportPaths): number {
+  return openFileInBrowser(reportPaths.enhancedIndex);
+}
+
 interface JUnitSummary {
   tests: number;
   failures: number;
@@ -463,6 +525,8 @@ function simulateWeComNotification(
         : '通过';
   const reportPath = path.join(ROOT, reportPaths.htmlIndex);
   const reportUrl = process.env.REPORT_URL || reportPath;
+  const enhancedReportUrl =
+    process.env.ENHANCED_REPORT_URL || path.join(ROOT, reportPaths.enhancedIndex);
   const allureReportUrl = process.env.ALLURE_REPORT_URL || path.join(ROOT, reportPaths.allureIndex);
   const summaryLine = summary
     ? `总数 ${summary.tests}，失败 ${summary.failures}，错误 ${summary.errors}，跳过 ${summary.skipped}，耗时 ${summary.time.toFixed(2)}s`
@@ -472,6 +536,7 @@ function simulateWeComNotification(
     `> 环境：${options.env}`,
     `> 目标：${target}`,
     `> 结果：${summaryLine}`,
+    `> Enhanced Report：${enhancedReportUrl}`,
     `> HTML Report：${reportUrl}`,
     ...(allureReportGenerated ? [`> Allure Report：${allureReportUrl}`] : []),
     `> JUnit Report：${path.join(ROOT, reportPaths.junitFile)}`,
@@ -504,10 +569,13 @@ const playwrightReportEnv = {
   PLAYWRIGHT_JUNIT_REPORT_FILE: reportPaths.junitFile,
   ALLURE_RESULTS_DIR: reportPaths.allureResultsDir,
   PLAYWRIGHT_ARTIFACTS_DIR: reportPaths.artifactsDir,
+  PLAYWRIGHT_ENHANCED_REPORT_DIR: reportPaths.enhancedDir,
 };
 
 console.log(`${logPrefix} TEST_ENV=${options.env} playwright ${testArgs.join(' ')}`);
 console.log(`${logPrefix} Report run directory: ${reportPaths.runDir}`);
+console.log(`${logPrefix} Enhanced report: ${reportPaths.enhancedIndex}`);
+updateLatestLink(reportPaths);
 
 if (options.allure) {
   cleanAllureOutput(reportPaths);
@@ -538,18 +606,20 @@ if (options.notify) {
 }
 
 let openExitCode = 0;
+const shouldOpenEnhanced =
+  options.enhanced || (options.open && !options.allure && !options.report);
 
-if (options.open) {
-  if (options.allure) {
+if (options.open || options.enhanced || options.report) {
+  if (options.allure && options.open) {
     console.log(`${logPrefix} Opening Allure HTML report...`);
     openExitCode = openAllureReport(reportPaths, allureReportGenerated);
+  } else if (shouldOpenEnhanced) {
+    console.log(`${logPrefix} Opening Enhanced HTML report...`);
+    openExitCode = openEnhancedReport(reportPaths);
   } else {
     console.log(`${logPrefix} Opening Playwright HTML report...`);
     openExitCode = runPlaywright(['show-report', reportPaths.htmlDir], options.env);
   }
-} else if (options.report) {
-  console.log(`${logPrefix} Opening Playwright HTML report...`);
-  openExitCode = runPlaywright(['show-report', reportPaths.htmlDir], options.env);
 }
 
 process.exit(testExitCode || allureExitCode || openExitCode);
