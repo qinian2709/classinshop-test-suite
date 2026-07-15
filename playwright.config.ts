@@ -25,7 +25,7 @@ export default defineConfig({
       {
         outputDir: enhancedReportDir,
         outputFile: 'enhanced-report.html',
-        title: 'ClassIn Shop · Test Report',
+        title: 'ClassInShop · Test Report',
         openReport: false,
         theme: 'light',
         includeCharts: true,
@@ -38,8 +38,6 @@ export default defineConfig({
         enablePdfExport: false,
         dashboardWidgets: {
           overview: true,
-          environment: false,
-          metrics: false,
           suites: true,
           charts: false,
           categories: false,
