@@ -7,8 +7,8 @@
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 #
-# 报告：测试结束后用 scripts/generate-static-report.mjs 生成自包含 HTML，
-# 在对应 Job → Browse artifacts → reports/latest/static-report/index.html 打开。
+# 报告：playwright-enhanced-reporter → reports/latest/enhanced/enhanced-report.html
+# 打开：Job → Browse artifacts → reports/latest/enhanced/enhanced-report.html
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -58,17 +58,10 @@ prepare:
   - pnpm install --frozen-lockfile
 
 .prepare_report_dirs: &prepare_report_dirs
-  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results reports/latest/static-report
+  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results
 
 .ensure_report_artifacts: &ensure_report_artifacts
   - mkdir -p reports/latest
-  # 用仓库自带静态模板从 allure-results 生成可双击打开的 HTML（测试失败也尽量生成）
-  - |
-    if ls reports/latest/allure-results/*-result.json >/dev/null 2>&1; then
-      node scripts/generate-static-report.mjs reports/latest/allure-results reports/latest/static-report
-    else
-      echo "WARN: no allure-results; skip static report"
-    fi
   - |
     if [ ! -f reports/latest/junit.xml ]; then
       printf '%s\n' \
@@ -76,6 +69,14 @@ prepare:
         '<testsuites name="classinshop-test-suite" tests="0" failures="0" errors="0" skipped="0"></testsuites>' \
         > reports/latest/junit.xml
       echo "WARN: junit.xml missing after tests; wrote empty placeholder."
+    fi
+  - |
+    if [ -f reports/latest/enhanced/enhanced-report.html ]; then
+      echo "Enhanced report ready: reports/latest/enhanced/enhanced-report.html"
+      ls -la reports/latest/enhanced/ | head -20
+    else
+      echo "WARN: enhanced-report.html missing under reports/latest/enhanced/"
+      find reports -maxdepth 4 -type f \( -name '*.html' -o -name 'junit.xml' \) 2>/dev/null | head -40 || true
     fi
 
 # 接口自动化：每次都跑，是最低红线。
@@ -94,7 +95,7 @@ test-api:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    expose_as: 'Static Report API'
+    expose_as: 'Enhanced Report API'
     paths:
       - reports/
     reports:
@@ -120,7 +121,7 @@ test-e2e:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    expose_as: 'Static Report E2E'
+    expose_as: 'Enhanced Report E2E'
     paths:
       - reports/
     reports:

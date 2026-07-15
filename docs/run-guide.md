@@ -125,11 +125,11 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 ```text
 reports/
   latest/          # 指向最近一次运行（脚手架会更新 symlink；直跑 playwright 时直接写入此目录）
-    static-report/ # 自包含静态 HTML（CI 主报告，generate-static-report.mjs）
-    enhanced/      # playwright-enhanced-reporter（本地可选）
+    enhanced/      # playwright-enhanced-reporter（主报告）
     html/          # Playwright HTML
     allure-results/
     allure-html/   # 加 --allure 后生成
+    static-report/ # generate-static-report.mjs（可选）
     artifacts/     # 截图 / trace / video
     junit.xml
   runs/
@@ -139,15 +139,15 @@ reports/
 - 脚手架（`pnpm test:api` 等）：写入 `reports/runs/<id>/`，并更新 `reports/latest` → 该次运行。
 - 直跑 `pnpm exec playwright test`：写入 `reports/latest/`。
 - `--open` 默认打开 Enhanced；`--allure --open` 打开 Allure；`--report` 打开 Playwright HTML。
-- 事后打开：`pnpm report:static` / `pnpm report:enhanced` / `pnpm report` / `pnpm report:allure:open`。
+- 事后打开：`pnpm report:enhanced` / `pnpm report` / `pnpm report:allure:open` / `pnpm report:static`。
 
 ### GitLab CI 看报告
 
-CI 跑完后用仓库自带静态模板生成报告（`scripts/generate-static-report.mjs`）：
+CI 使用 `playwright-enhanced-reporter`，产物在 Job Artifacts：
 
-打开对应 Job → Browse artifacts → `reports/latest/static-report/index.html`
+打开对应 Job → Browse artifacts → `reports/latest/enhanced/enhanced-report.html`
 
-不依赖 GitLab Pages，日志里也不输出外链地址。
+不依赖 GitLab Pages，日志不输出外链地址。
 
 | 参数 | 打开的报告 |
 | --- | --- |
@@ -155,7 +155,7 @@ CI 跑完后用仓库自带静态模板生成报告（`scripts/generate-static-r
 | `--enhanced` / `--enhanced --open` | Enhanced |
 | `--allure --open` | Allure |
 | `--report` | Playwright HTML |
-| `pnpm report:static` | 静态 HTML（同 CI） |
+| `pnpm report:static` | 静态 HTML（可选） |
 
 ## 9. CI
 
