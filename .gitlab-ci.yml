@@ -87,7 +87,7 @@ test-api:
     - *print_report_hint
   artifacts:
     when: always
-    expose_as: 'Enhanced Report (API)'
+    expose_as: 'Enhanced Report API'
     paths:
       - reports/
     reports:
@@ -112,7 +112,7 @@ test-e2e:
     - *print_report_hint
   artifacts:
     when: always
-    expose_as: 'Enhanced Report (E2E)'
+    expose_as: 'Enhanced Report E2E'
     paths:
       - reports/
     reports:

@@ -146,7 +146,7 @@ CI **会自动生成** Enhanced 报告（跑测试时 reporter 写入 `reports/l
 
 1. **Job Artifacts（每次测试 Job 都有）**  
    打开对应 Job → Browse / Download → `reports/latest/enhanced/enhanced-report.html`  
-   MR 页也会出现 `Enhanced Report (API)` 暴露链接。
+   MR 页也会出现 `Enhanced Report API` 暴露链接。
 
 2. **GitLab Pages（pages Job）**  
    流水线 `pages` 成功后，Environment / Pages 入口打开：  
