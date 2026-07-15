@@ -38,6 +38,8 @@ export default defineConfig({
         enablePdfExport: false,
         dashboardWidgets: {
           overview: true,
+          environment: false,
+          metrics: false,
           suites: true,
           charts: false,
           categories: false,
