@@ -41,6 +41,8 @@ TEST_ENV=14 pnpm test:api
 pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts
 # 使用默认 Playwright HTML 报告并模拟发送企微通知
 pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify
+# 测试结束后打开 Enhanced HTML 报告（默认主报告）
+pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --open
 # 测试结束后额外生成 Allure HTML 报告
 pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure
 # 生成 Allure HTML 报告并自动打开
@@ -52,9 +54,10 @@ pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify
 pnpm test:e2e:web
 pnpm test:e2e:mobile
 # 按环境运行指定 PC E2E 用例
-pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure
+pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --open
 
 # 5. 查看报告
+pnpm report:enhanced
 pnpm report
 pnpm report:allure
 pnpm report:allure:open
@@ -72,15 +75,17 @@ pnpm report:allure:open
 | `pnpm test`                                    | 运行全部 Playwright 项目                     |
 | `pnpm test:api`                                | 仅接口自动化                                 |
 | `pnpm test:core`                               | 一次运行 API + PC Web + H5 Mobile 全量用例   |
-| `pnpm test:core -- --env 14 --allure --open`   | 14 环境跑 core 全量并打开 Allure 报告        |
+| `pnpm test:core -- --env 14 --open`            | 14 环境跑 core 全量并打开 Enhanced 报告      |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts` | 按环境运行指定 API 用例             |
-| `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify` | 打开默认报告并模拟企微通知 |
+| `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --report --notify` | 打开默认 Playwright HTML 并模拟企微通知 |
+| `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --open` | 打开 Enhanced HTML 报告（主报告） |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure` | 测试结束后生成 Allure HTML 报告     |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --open` | 生成并打开 Allure HTML 报告 |
 | `pnpm test:api -- --env 14 --file tests/api/api-demo.spec.ts --allure --notify` | 生成 Allure 后模拟企微通知 |
-| `pnpm test:e2e:web` / `pnpm test:e2e:mobile`   | PC / H5 端到端，支持 `--env` / `--file` / `--allure` |
-| `pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --allure` | 按环境运行指定 PC E2E 用例 |
+| `pnpm test:e2e:web` / `pnpm test:e2e:mobile`   | PC / H5 端到端，支持 `--env` / `--file` / `--open` / `--allure` |
+| `pnpm test:e2e:web -- --env 14 --file tests/e2e-web/enter-shop.spec.ts --open` | 按环境运行指定 PC E2E 用例 |
 | `pnpm test:mp`                                 | 小程序自动化（需 `RUN_MP=1` + 本地微信工具） |
+| `pnpm report:enhanced`                         | 打开最近一次 Enhanced HTML 报告              |
 | `pnpm report` / `pnpm report:allure:open`      | 打开 Playwright / Allure HTML 报告           |
 | `pnpm perf:baseline` / `pnpm perf:order`       | k6 基准 / 负载压测                           |
 | `pnpm codegen:api`                             | 从后端 swagger.json 生成接口类型             |

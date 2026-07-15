@@ -118,11 +118,44 @@ pnpm codegen:api   # 读取 ../classinshop-go/api/http/docs/swagger.json -> shar
 
 ## 8. 报告
 
-- 通过 `pnpm test:api`、`pnpm test:core`、`pnpm test:e2e:web`、`pnpm test:e2e:mobile`、`pnpm test:mp` 运行时，每次执行都会生成独立目录：`reports/runs/<timestamp>-<project>-<pid>/`。
-- 本次 HTML 报告在该目录的 `html/index.html`；加 `--open` 会打开本次报告。
-- 本次 JUnit 在该目录的 `junit.xml`。
-- 失败截图 / trace / video 在该目录的 `artifacts/`。
-- 直接执行 `pnpm exec playwright test ...` 时仍使用 Playwright 默认配置路径：`reports/html`、`reports/junit.xml`、`reports/artifacts`。
+所有报告与测试产物统一落在 `reports/`，不再使用根目录 `allure-results` / `playwright-report`。
+
+结构：
+
+```text
+reports/
+  latest/          # 指向最近一次运行（脚手架会更新 symlink；直跑 playwright 时直接写入此目录）
+    enhanced/      # playwright-enhanced-reporter（主报告）
+    html/          # Playwright HTML
+    allure-results/
+    allure-html/   # 加 --allure 后生成
+    static-report/ # generate-static-report.mjs（可选）
+    artifacts/     # 截图 / trace / video
+    junit.xml
+  runs/
+    <timestamp>-<project>-<pid>/   # 脚手架每次独立快照（内容同上）
+```
+
+- 脚手架（`pnpm test:api` 等）：写入 `reports/runs/<id>/`，并更新 `reports/latest` → 该次运行。
+- 直跑 `pnpm exec playwright test`：写入 `reports/latest/`。
+- `--open` 默认打开 Enhanced；`--allure --open` 打开 Allure；`--report` 打开 Playwright HTML。
+- 事后打开：`pnpm report:enhanced` / `pnpm report` / `pnpm report:allure:open` / `pnpm report:static`。
+
+### GitLab CI 看报告
+
+CI 使用 `playwright-enhanced-reporter`，产物在 Job Artifacts：
+
+打开对应 Job → Browse artifacts → `reports/latest/enhanced/enhanced-report.html`
+
+不依赖 GitLab Pages，日志不输出外链地址。
+
+| 参数 | 打开的报告 |
+| --- | --- |
+| `--open` | Enhanced |
+| `--enhanced` / `--enhanced --open` | Enhanced |
+| `--allure --open` | Allure |
+| `--report` | Playwright HTML |
+| `pnpm report:static` | 静态 HTML（可选） |
 
 ## 9. CI
 

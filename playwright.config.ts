@@ -4,10 +4,11 @@ import { env } from './config/index.js';
 const isCI = !!process.env.CI;
 // 小程序自动化依赖本地微信开发者工具，只允许本地显式开启，不进入常规/CI 项目集。
 const runMiniprogram = process.env.RUN_MP === '1' && !isCI;
-const htmlReportFolder = process.env.PLAYWRIGHT_HTML_REPORT_DIR || 'reports/html';
-const junitReportFile = process.env.PLAYWRIGHT_JUNIT_REPORT_FILE || 'reports/junit.xml';
-const allureResultsDir = process.env.ALLURE_RESULTS_DIR || 'reports/allure-results';
-const artifactsDir = process.env.PLAYWRIGHT_ARTIFACTS_DIR || 'reports/artifacts';
+const htmlReportFolder = process.env.PLAYWRIGHT_HTML_REPORT_DIR || 'reports/latest/html';
+const junitReportFile = process.env.PLAYWRIGHT_JUNIT_REPORT_FILE || 'reports/latest/junit.xml';
+const allureResultsDir = process.env.ALLURE_RESULTS_DIR || 'reports/latest/allure-results';
+const artifactsDir = process.env.PLAYWRIGHT_ARTIFACTS_DIR || 'reports/latest/artifacts';
+const enhancedReportDir = process.env.PLAYWRIGHT_ENHANCED_REPORT_DIR || 'reports/latest/enhanced';
 
 export default defineConfig({
   testDir: 'tests',
@@ -19,6 +20,41 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: [
     ['list'],
+    [
+      'playwright-enhanced-reporter',
+      {
+        outputDir: enhancedReportDir,
+        outputFile: 'enhanced-report.html',
+        title: 'ClassInShop · Test Report',
+        openReport: false,
+        theme: 'light',
+        includeCharts: true,
+        includeTrends: false,
+        enableTimeline: false,
+        enableStabilityScore: false,
+        enableFailureClustering: false,
+        enableRunComparison: false,
+        enableSpeedboard: false,
+        enablePdfExport: false,
+        dashboardWidgets: {
+          overview: true,
+          environment: false,
+          metrics: false,
+          suites: true,
+          charts: false,
+          categories: false,
+          performance: false,
+          insights: false,
+          timeline: false,
+          speedboard: false,
+          stability: false,
+          failureClusters: false,
+          comparison: false,
+          apiPayloads: false,
+          trends: false,
+        },
+      },
+    ],
     ['html', { outputFolder: htmlReportFolder, open: 'never' }],
     ['junit', { outputFile: junitReportFile }],
     ['allure-playwright', { resultsDir: allureResultsDir, detail: true }],
