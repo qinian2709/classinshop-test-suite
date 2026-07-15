@@ -60,7 +60,20 @@ prepare:
   - corepack prepare pnpm@${PNPM_VERSION} --activate
   - pnpm install --frozen-lockfile
 
-.print_report_hint: &print_report_hint
+.prepare_report_dirs: &prepare_report_dirs
+  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results
+
+.ensure_report_artifacts: &ensure_report_artifacts
+  - mkdir -p reports/latest
+  # 避免「No files to upload」把 Job 判失败：即使测试中途崩溃也保证目录/junit 存在
+  - |
+    if [ ! -f reports/latest/junit.xml ]; then
+      printf '%s\n' \
+        '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<testsuites name="classinshop-test-suite" tests="0" failures="0" errors="0" skipped="0"></testsuites>' \
+        > reports/latest/junit.xml
+      echo "WARN: junit.xml missing after tests; wrote empty placeholder."
+    fi
   - |
     echo "======== Enhanced Report ========"
     if [ -f reports/latest/enhanced/enhanced-report.html ]; then
@@ -69,6 +82,7 @@ prepare:
       ls -la reports/latest/enhanced/ | head -20
     else
       echo "WARN: Enhanced report not found under reports/latest/enhanced/"
+      ls -la reports/latest/ || true
     fi
     echo "================================="
 
@@ -81,12 +95,14 @@ test-api:
       artifacts: true
   script:
     - *install
+    - *prepare_report_dirs
     # 串行执行：被测环境 WAF 会拦截并发突发请求
     - pnpm exec playwright test --project=api --workers=1
   after_script:
-    - *print_report_hint
+    - *ensure_report_artifacts
   artifacts:
     when: always
+    optional: true
     expose_as: 'Enhanced Report API'
     paths:
       - reports/
@@ -107,11 +123,13 @@ test-e2e:
   allow_failure: true
   script:
     - *install
+    - *prepare_report_dirs
     - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
   after_script:
-    - *print_report_hint
+    - *ensure_report_artifacts
   artifacts:
     when: always
+    optional: true
     expose_as: 'Enhanced Report E2E'
     paths:
       - reports/
@@ -130,18 +148,19 @@ pages:
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  allow_failure: true
   script:
     - mkdir -p public
     - |
-      if [ -d reports/latest/enhanced ]; then
+      if [ -d reports/latest/enhanced ] && [ -f reports/latest/enhanced/enhanced-report.html ]; then
         cp -r reports/latest/enhanced/* public/
         echo "Published Enhanced report to GitLab Pages (public/)."
-      elif [ -d reports/latest/html ]; then
+      elif [ -d reports/latest/html ] && ls reports/latest/html/index.html >/dev/null 2>&1; then
         cp -r reports/latest/html/* public/
         echo "Published Playwright HTML report to GitLab Pages (fallback)."
       else
-        echo "no report under reports/latest" >&2
-        exit 1
+        echo "WARN: no report under reports/latest; publishing placeholder."
+        printf '%s\n' '<!doctype html><meta charset="utf-8"><title>No report</title><h1>No test report generated</h1>' > public/index.html
       fi
       ls -la public/ | head -20
     - |
@@ -154,6 +173,8 @@ pages:
     name: test-report/$CI_COMMIT_REF_SLUG
     url: $CI_PAGES_URL/enhanced-report.html
   artifacts:
+    when: always
+    optional: true
     paths:
       - public
     expire_in: 1 week
