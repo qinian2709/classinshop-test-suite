@@ -7,10 +7,8 @@
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 #
-# 报告（Enhanced HTML）：
-#   - 测试 Job 自动生成到 reports/latest/enhanced/
-#   - Job Artifacts 可在线浏览 / 下载
-#   - pages Job 发布到 GitLab Pages，流水线结束后可在线打开
+# 报告：测试结束后用 scripts/generate-static-report.mjs 生成自包含 HTML，
+# 在对应 Job → Browse artifacts → reports/latest/static-report/index.html 打开。
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -29,7 +27,6 @@ workflow:
 stages:
   - prepare
   - test
-  - report
 
 # 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
 prepare:
@@ -61,11 +58,17 @@ prepare:
   - pnpm install --frozen-lockfile
 
 .prepare_report_dirs: &prepare_report_dirs
-  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results
+  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results reports/latest/static-report
 
 .ensure_report_artifacts: &ensure_report_artifacts
   - mkdir -p reports/latest
-  # 避免「No files to upload」把 Job 判失败：即使测试中途崩溃也保证目录/junit 存在
+  # 用仓库自带静态模板从 allure-results 生成可双击打开的 HTML（测试失败也尽量生成）
+  - |
+    if ls reports/latest/allure-results/*-result.json >/dev/null 2>&1; then
+      node scripts/generate-static-report.mjs reports/latest/allure-results reports/latest/static-report
+    else
+      echo "WARN: no allure-results; skip static report"
+    fi
   - |
     if [ ! -f reports/latest/junit.xml ]; then
       printf '%s\n' \
@@ -74,17 +77,6 @@ prepare:
         > reports/latest/junit.xml
       echo "WARN: junit.xml missing after tests; wrote empty placeholder."
     fi
-  - |
-    echo "======== Enhanced Report ========"
-    if [ -f reports/latest/enhanced/enhanced-report.html ]; then
-      echo "Local path: reports/latest/enhanced/enhanced-report.html"
-      echo "Browse artifacts in this job, or wait for pages job for online URL."
-      ls -la reports/latest/enhanced/ | head -20
-    else
-      echo "WARN: Enhanced report not found under reports/latest/enhanced/"
-      ls -la reports/latest/ || true
-    fi
-    echo "================================="
 
 # 接口自动化：每次都跑，是最低红线。
 test-api:
@@ -102,7 +94,7 @@ test-api:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    expose_as: 'Enhanced Report API'
+    expose_as: 'Static Report API'
     paths:
       - reports/
     reports:
@@ -128,50 +120,9 @@ test-e2e:
     - *ensure_report_artifacts
   artifacts:
     when: always
-    expose_as: 'Enhanced Report E2E'
+    expose_as: 'Static Report E2E'
     paths:
       - reports/
     reports:
       junit: reports/latest/junit.xml
-    expire_in: 1 week
-
-# 发布 Enhanced HTML 到 GitLab Pages，流水线结束后可在线打开。
-pages:
-  stage: report
-  image: ${PLAYWRIGHT_IMAGE}
-  needs:
-    - job: test-api
-      artifacts: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-  allow_failure: true
-  script:
-    - mkdir -p public
-    - |
-      if [ -d reports/latest/enhanced ] && [ -f reports/latest/enhanced/enhanced-report.html ]; then
-        cp -r reports/latest/enhanced/* public/
-        echo "Published Enhanced report to GitLab Pages (public/)."
-      elif [ -d reports/latest/html ] && ls reports/latest/html/index.html >/dev/null 2>&1; then
-        cp -r reports/latest/html/* public/
-        echo "Published Playwright HTML report to GitLab Pages (fallback)."
-      else
-        echo "WARN: no report under reports/latest; publishing placeholder."
-        printf '%s\n' '<!doctype html><meta charset="utf-8"><title>No report</title><h1>No test report generated</h1>' > public/index.html
-      fi
-      ls -la public/ | head -20
-    - |
-      echo "======== Online Report ========"
-      echo "Pages URL (after deploy): ${CI_PAGES_URL}"
-      echo "Entry: ${CI_PAGES_URL}/enhanced-report.html"
-      echo "Or open Job artifacts → reports/latest/enhanced/enhanced-report.html"
-      echo "================================"
-  environment:
-    name: test-report/$CI_COMMIT_REF_SLUG
-    url: $CI_PAGES_URL/enhanced-report.html
-  artifacts:
-    when: always
-    paths:
-      - public
     expire_in: 1 week

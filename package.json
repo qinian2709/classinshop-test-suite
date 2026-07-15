@@ -24,6 +24,7 @@
     "test:mp:teacher": "tsx scripts/run-api.ts --project miniprogram-teacher",
     "report": "playwright show-report reports/latest/html",
     "report:enhanced": "node scripts/open-enhanced-report.mjs",
+    "report:static": "node scripts/generate-static-report.mjs reports/latest/allure-results reports/latest/static-report",
     "report:allure": "allure generate reports/latest/allure-results --clean -o reports/latest/allure-html",
     "report:allure:open": "allure open reports/latest/allure-html",
     "codegen:api": "openapi-typescript ../classinshop-go/api/http/docs/swagger.json -o shared/api/schema.d.ts",
