@@ -206,10 +206,28 @@ function buildPublicUrl(baseUrl: string, relativeDir: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${relativeDir}/enhanced-report.html`;
 }
 
-function copyDirectory(sourceDir: string, destDir: string): void {
+/** Publish HTML + attachments only; detailed-report.json stays in CI Artifacts for index extraction. */
+function copyPublishableReport(sourceDir: string, destDir: string): void {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
-  fs.cpSync(sourceDir, destDir, { recursive: true });
+
+  fs.copyFileSync(
+    path.join(sourceDir, 'enhanced-report.html'),
+    path.join(destDir, 'enhanced-report.html'),
+  );
+
+  const attachmentsSrc = path.join(sourceDir, 'attachments');
+  if (fs.existsSync(attachmentsSrc)) {
+    fs.cpSync(attachmentsSrc, path.join(destDir, 'attachments'), { recursive: true });
+  }
+
+  console.error(
+    '[publish-report] Staged enhanced-report.html + attachments (detailed-report.json excluded from hosting repo)',
+  );
+}
+
+function copyDirectory(sourceDir: string, destDir: string): void {
+  copyPublishableReport(sourceDir, destDir);
 }
 
 function runCommand(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): void {
@@ -298,7 +316,12 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
 }
 
 function runRsync(sourceDir: string, remoteDest: string, sshPrivateKey?: string): void {
-  const rsyncArgs = ['-avz', '--delete', `${sourceDir}/`, remoteDest.endsWith('/') ? remoteDest : `${remoteDest}/`];
+  const rsyncArgs = [
+    '-avz',
+    '--delete',
+    `${sourceDir}/`,
+    remoteDest.endsWith('/') ? remoteDest : `${remoteDest}/`,
+  ];
   if (sshPrivateKey?.trim()) {
     const keyFile = path.join('/tmp', `report-publish-key-${process.pid}`);
     fs.writeFileSync(keyFile, sshPrivateKey.replace(/\\n/g, '\n'), { mode: 0o600 });
@@ -310,7 +333,13 @@ function runRsync(sourceDir: string, remoteDest: string, sshPrivateKey?: string)
 
 function publishToRemoteRoot(sourceDir: string, remoteRoot: string, relativeDir: string, sshPrivateKey?: string): void {
   const normalizedRoot = remoteRoot.replace(/\/$/, '');
-  runRsync(sourceDir, `${normalizedRoot}/${relativeDir}`, sshPrivateKey);
+  const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'classinshop-report-rsync-'));
+  try {
+    copyPublishableReport(sourceDir, stagingDir);
+    runRsync(stagingDir, `${normalizedRoot}/${relativeDir}`, sshPrivateKey);
+  } finally {
+    fs.rmSync(stagingDir, { recursive: true, force: true });
+  }
 }
 
 function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): string {
