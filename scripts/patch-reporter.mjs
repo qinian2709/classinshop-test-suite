@@ -99,9 +99,38 @@ function main() {
     }
   }
 
+  // 4. Test Suites panel: internal scroll when many suite cards (overflow:hidden clips content)
+  if (!content.includes('#suites .suite-list {')) {
+    const suiteListRe =
+      /\.suite-list \{\r?\n            display: flex;\r?\n            flex-direction: column;\r?\n            gap: 12px;\r?\n        \}/;
+    const suiteListReplacement = `.suite-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* patched: scroll long suite lists inside Test Suites panel */
+        #suites .x_content {
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: min(70vh, 2000px);
+        }
+
+        #suites .suite-list {
+            min-height: 0;
+        }`;
+    if (!suiteListRe.test(content)) {
+      console.warn('⚠️  patch #4 needle not found, skipping');
+    } else {
+      content = content.replace(suiteListRe, suiteListReplacement);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
-    console.log('✅ playwright-enhanced-reporter patched (environment/metrics widgets)');
+    console.log('✅ playwright-enhanced-reporter patched');
   } else {
     console.log('ℹ️  playwright-enhanced-reporter already patched, skipping');
   }

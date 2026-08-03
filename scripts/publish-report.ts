@@ -69,6 +69,131 @@ function buildRelativePath(options: PublishOptions): string {
   return `${env}/${target}/${pipeline}/enhanced`;
 }
 
+const REPORTS_INDEX_FILE = 'reports-index.json';
+
+interface ReportSummary {
+  totalTests: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  passRate: number;
+  duration: number;
+}
+
+interface ReportIndexEntry {
+  env: string;
+  target: string;
+  pipelineId: string;
+  path: string;
+  publishedAt: string;
+  branch?: string;
+  author?: string;
+  buildUrl?: string;
+  ref?: string;
+  summary?: ReportSummary;
+}
+
+interface ReportsIndex {
+  updatedAt: string;
+  reports: ReportIndexEntry[];
+}
+
+function readReportIndexEntry(sourceDir: string, options: PublishOptions): ReportIndexEntry {
+  const env = sanitizeSegment(options.testEnv);
+  const target = sanitizeSegment(options.target);
+  const pipelineId = sanitizeSegment(options.pipelineId);
+  const relativeDir = buildRelativePath(options);
+
+  const entry: ReportIndexEntry = {
+    env,
+    target,
+    pipelineId,
+    path: `${relativeDir}/enhanced-report.html`,
+    publishedAt: new Date().toISOString(),
+    ref: options.ref || undefined,
+  };
+
+  const detailedPath = path.join(sourceDir, 'detailed-report.json');
+  if (!fs.existsSync(detailedPath)) {
+    return entry;
+  }
+
+  try {
+    const detailed = JSON.parse(fs.readFileSync(detailedPath, 'utf8')) as {
+      summary?: {
+        totalTests?: number;
+        passed?: number;
+        failed?: number;
+        skipped?: number;
+        passRate?: number;
+        duration?: number;
+        startTime?: string;
+        endTime?: string;
+        ciInfo?: {
+          branch?: string;
+          author?: string;
+          buildUrl?: string;
+        };
+      };
+    };
+
+    const summary = detailed.summary;
+    if (!summary) {
+      return entry;
+    }
+
+    entry.publishedAt = summary.endTime || summary.startTime || entry.publishedAt;
+    entry.branch = summary.ciInfo?.branch;
+    entry.author = summary.ciInfo?.author;
+    entry.buildUrl = summary.ciInfo?.buildUrl;
+    entry.ref = summary.ciInfo?.branch || entry.ref;
+    entry.summary = {
+      totalTests: summary.totalTests ?? 0,
+      passed: summary.passed ?? 0,
+      failed: summary.failed ?? 0,
+      skipped: summary.skipped ?? 0,
+      passRate: summary.passRate ?? 0,
+      duration: summary.duration ?? 0,
+    };
+  } catch {
+    // Keep minimal entry when detailed-report.json is malformed.
+  }
+
+  return entry;
+}
+
+function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
+  const indexPath = path.join(repoDir, REPORTS_INDEX_FILE);
+  let index: ReportsIndex = { updatedAt: new Date().toISOString(), reports: [] };
+
+  if (fs.existsSync(indexPath)) {
+    try {
+      index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) as ReportsIndex;
+      if (!Array.isArray(index.reports)) {
+        index.reports = [];
+      }
+    } catch {
+      index.reports = [];
+    }
+  }
+
+  index.reports = index.reports.filter(
+    (item) =>
+      !(
+        item.env === entry.env &&
+        item.target === entry.target &&
+        item.pipelineId === entry.pipelineId
+      ),
+  );
+  index.reports.push(entry);
+  index.reports.sort(
+    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+  );
+  index.updatedAt = new Date().toISOString();
+
+  fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
+}
+
 export const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 
 function writePublishEnv(publicUrl: string): void {
@@ -136,6 +261,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   try {
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT);
     copyDirectory(sourceDir, path.join(workDir, relativePath));
+    updateReportsIndex(workDir, readReportIndexEntry(sourceDir, options));
 
     const gitEnv = {
       ...process.env,
@@ -145,7 +271,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
       GIT_COMMITTER_EMAIL: process.env.REPORT_PUBLISH_GIT_AUTHOR_EMAIL || 'ci@classinshop.local',
     };
 
-    runCommand('git', ['add', relativePath], workDir, gitEnv);
+    runCommand('git', ['add', relativePath, REPORTS_INDEX_FILE], workDir, gitEnv);
     runCommand(
       'git',
       [
@@ -206,8 +332,11 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
 
   if (rsyncTarget) {
     publishToRemoteRoot(sourceDir, rsyncTarget, relativePath, sshKey);
+    updateReportsIndex(rsyncTarget.replace(/\/$/, ''), readReportIndexEntry(sourceDir, options));
   } else if (localDir) {
-    copyDirectory(sourceDir, path.join(localDir, relativePath));
+    const localRoot = localDir.replace(/\/$/, '');
+    copyDirectory(sourceDir, path.join(localRoot, relativePath));
+    updateReportsIndex(localRoot, readReportIndexEntry(sourceDir, options));
   }
 
   console.error(`[publish-report] Report URL: ${publicUrl}`);
