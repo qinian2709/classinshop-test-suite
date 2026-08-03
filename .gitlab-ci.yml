@@ -8,6 +8,7 @@
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 #
 # 企微通知 Webhook 默认写在 config/wecom.ts；可用 WECOM_WEBHOOK_URL 环境变量覆盖。
+# 静态报告发布成功后，企微通知默认最多等待 30s（WECOM_PUBLISH_WAIT_SECONDS）再发送，避免 Coolify 未部署完导致 404。
 # 报告发布到 Coolify 静态站点（推荐）：
 #   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
 #   REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git

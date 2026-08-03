@@ -80,6 +80,51 @@ function readPublishedReportUrl(): string | undefined {
   return url && url.startsWith('http') ? url : undefined;
 }
 
+function parsePublishWaitSeconds(): number {
+  const raw = process.env.WECOM_PUBLISH_WAIT_SECONDS?.trim();
+  if (raw === '0' || raw === 'false' || raw === 'off') return 0;
+  if (raw) {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return readPublishedReportUrl() ? 30 : 0;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPublishedReport(reportUrl: string, maxWaitSeconds: number): Promise<void> {
+  if (maxWaitSeconds <= 0) return;
+
+  console.log(
+    `[wecom] Waiting up to ${maxWaitSeconds}s for published report to become reachable: ${reportUrl}`,
+  );
+
+  const deadline = Date.now() + maxWaitSeconds * 1000;
+  const pollIntervalMs = 5000;
+
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(reportUrl, { method: 'HEAD', redirect: 'follow' });
+      if (response.ok) {
+        console.log(`[wecom] Report URL reachable (HTTP ${response.status}).`);
+        return;
+      }
+      console.log(`[wecom] Report URL not ready yet (HTTP ${response.status}).`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`[wecom] Report URL check failed: ${message}`);
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await sleep(Math.min(pollIntervalMs, remainingMs));
+  }
+
+  console.warn('[wecom] Report URL still unavailable; sending notification anyway.');
+}
+
 export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
   const published = readPublishedReportUrl();
   if (published) {
@@ -244,6 +289,7 @@ export async function sendWeComNotification(
   const reportLinks = resolveReportLinks(input);
   if (reportLinks.enhanced) {
     console.log(`[wecom] Enhanced report URL: ${reportLinks.enhanced}`);
+    await waitForPublishedReport(reportLinks.enhanced, parsePublishWaitSeconds());
   } else if (reportLinks.job) {
     console.log(`[wecom] Fallback job URL: ${reportLinks.job}`);
   } else if (reportLinks.localPath) {
