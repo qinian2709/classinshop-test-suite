@@ -2,12 +2,12 @@
 # 与其他仓库一致，按分支 13/14/im 触发；并支持定时（schedule）夜间回归。
 #
 # 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
-#   WECOM_WEBHOOK_URL  企微机器人 Webhook，如 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
 #   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
 #   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain），如 https://appi4rhoyxe1.shop14.eeo.im
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 #
+# 企微通知 Webhook 默认写在 config/wecom.ts；可用 WECOM_WEBHOOK_URL 环境变量覆盖。
 # 报告发布到 Coolify 静态站点（推荐）：
 #   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
 #   REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git
@@ -66,9 +66,10 @@ prepare:
 .prepare_report_dirs: &prepare_report_dirs
   - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results
 
-.ensure_report_artifacts: &ensure_report_artifacts
-  - mkdir -p reports/latest
+.post_test_finalize: &post_test_finalize
   - |
+    set +e
+    mkdir -p reports/latest
     if [ ! -f reports/latest/junit.xml ]; then
       printf '%s\n' \
         '<?xml version="1.0" encoding="UTF-8"?>' \
@@ -76,17 +77,12 @@ prepare:
         > reports/latest/junit.xml
       echo "WARN: junit.xml missing after tests; wrote empty placeholder."
     fi
-  - |
     if [ -f reports/latest/enhanced/enhanced-report.html ]; then
       echo "Enhanced report ready: reports/latest/enhanced/enhanced-report.html"
-      ls -la reports/latest/enhanced/ | head -20
     else
       echo "WARN: enhanced-report.html missing under reports/latest/enhanced/"
-      find reports -maxdepth 4 -type f \( -name '*.html' -o -name 'junit.xml' \) 2>/dev/null | head -40 || true
     fi
 
-.publish_report: &publish_report
-  - |
     if [ -n "${REPORT_PUBLISH_BASE_URL:-}" ] && { [ -n "${REPORT_PUBLISH_GIT_REPO:-}" ] || [ -n "${REPORT_PUBLISH_RSYNC_TARGET:-}" ] || [ -n "${REPORT_PUBLISH_LOCAL_DIR:-}" ]; }; then
       corepack enable
       corepack prepare pnpm@${PNPM_VERSION} --activate
@@ -104,26 +100,20 @@ prepare:
       echo "INFO: REPORT_PUBLISH_* not configured; skip static report publish."
     fi
 
-.send_wecom_notify: &send_wecom_notify
-  - |
-    if [ -z "${WECOM_WEBHOOK_URL:-}" ]; then
-      echo "WARN: WECOM_WEBHOOK_URL not set; skip WeCom notification."
-    else
-      corepack enable
-      corepack prepare pnpm@${PNPM_VERSION} --activate
-      pnpm exec tsx scripts/wecom-notify.ts \
-        --env "${TEST_ENV}" \
-        --target "${NOTIFY_TARGET}" \
-        --exit-code "${CI_JOB_STATUS:-failed}" \
-        --junit reports/latest/junit.xml \
-        --job-name "${CI_JOB_NAME}" \
-        --project-name "${CI_PROJECT_NAME}" \
-        --ref-name "${CI_COMMIT_REF_NAME}" \
-        --job-url "${CI_JOB_URL}" \
-        --pipeline-url "${CI_PIPELINE_URL}" \
-        --enhanced-report-url "${ENHANCED_REPORT_URL:-${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/browse/reports/latest/enhanced/}" \
-        || echo "WARN: WeCom notification failed"
-    fi
+    corepack enable
+    corepack prepare pnpm@${PNPM_VERSION} --activate
+    pnpm exec tsx scripts/wecom-notify.ts \
+      --env "${TEST_ENV}" \
+      --target "${NOTIFY_TARGET}" \
+      --exit-code "${CI_JOB_STATUS:-failed}" \
+      --junit reports/latest/junit.xml \
+      --job-name "${CI_JOB_NAME}" \
+      --project-name "${CI_PROJECT_NAME}" \
+      --ref-name "${CI_COMMIT_REF_NAME}" \
+      --job-url "${CI_JOB_URL}" \
+      --pipeline-url "${CI_PIPELINE_URL}" \
+      --enhanced-report-url "${ENHANCED_REPORT_URL:-${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/browse/reports/latest/enhanced/}" \
+      || echo "WARN: WeCom notification failed"
 
 # 接口自动化：每次都跑，是最低红线。
 test-api:
@@ -142,9 +132,7 @@ test-api:
     # 全量恢复时改回:
     # - pnpm exec playwright test --project=api --workers=1
   after_script:
-    - *ensure_report_artifacts
-    - *publish_report
-    - *send_wecom_notify
+    - *post_test_finalize
   artifacts:
     when: always
     expose_as: 'Enhanced Report API'
@@ -172,9 +160,7 @@ test-e2e:
     - *prepare_report_dirs
     - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
   after_script:
-    - *ensure_report_artifacts
-    - *publish_report
-    - *send_wecom_notify
+    - *post_test_finalize
   artifacts:
     when: always
     expose_as: 'Enhanced Report E2E'

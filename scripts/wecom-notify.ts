@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { resolveWeComWebhookUrl } from '../config/wecom.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -232,12 +233,10 @@ interface WeComResponse {
 
 export async function sendWeComNotification(
   input: WeComNotifyInput,
-  webhookUrl = process.env.WECOM_WEBHOOK_URL?.trim(),
+  webhookUrl = resolveWeComWebhookUrl(),
 ): Promise<void> {
   if (!webhookUrl) {
-    throw new Error(
-      '缺少 WECOM_WEBHOOK_URL。请在 .env.local 或 GitLab CI/CD Variables 中配置企微机器人 Webhook。',
-    );
+    throw new Error('缺少企微 Webhook，请检查 config/wecom.ts 或环境变量 WECOM_WEBHOOK_URL。');
   }
 
   const content = buildWeComMarkdown(input);
