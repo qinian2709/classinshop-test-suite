@@ -101,19 +101,33 @@ function main() {
 
   // 4. Test Suites panel: internal scroll when many suite cards (overflow:hidden clips content)
   // NOTE: do NOT set min-height:0 on .suite-list — it collapses suite-card rows in flex layout.
-  if (content.includes('#suites .suite-list {\n            min-height: 0;\n        }')) {
-    content = content.replace(
-      /\r?\n\r?\n        \/\* patched: scroll long suite lists inside Test Suites panel \*\/\r?\n        #suites \.x_content \{\r?\n            justify-content: flex-start;\r?\n            overflow-x: hidden;\r?\n            overflow-y: auto;\r?\n            max-height: min\(70vh, 2000px\);\r?\n        \}\r?\n\r?\n        #suites \.suite-list \{\r?\n            min-height: 0;\r?\n        \}/,
-      `
-
+  // NOTE: #suites .x_content max-height beats .x_panel.collapsed unless we add a higher-specificity override.
+  const suiteScrollPatch = `
         /* patched: scroll long suite lists inside Test Suites panel */
         #suites .x_content {
             justify-content: flex-start;
             overflow-x: hidden;
             overflow-y: auto;
             max-height: min(70vh, 2000px);
-        }`,
-    );
+        }
+
+        #suites .x_panel.collapsed .x_content {
+            max-height: 0;
+            overflow: hidden;
+            padding: 0 20px;
+        }`;
+
+  const suiteScrollPatchOld =
+    /\r?\n\r?\n        \/\* patched: scroll long suite lists inside Test Suites panel \*\/\r?\n        #suites \.x_content \{\r?\n            justify-content: flex-start;\r?\n            overflow-x: hidden;\r?\n            overflow-y: auto;\r?\n            max-height: min\(70vh, 2000px\);\r?\n        \}(?:\r?\n\r?\n        #suites \.suite-list \{\r?\n            min-height: 0;\r?\n        \})?/;
+
+  if (content.includes('#suites .suite-list {\n            min-height: 0;\n        }')) {
+    content = content.replace(suiteScrollPatchOld, suiteScrollPatch);
+    patched = true;
+  } else if (
+    content.includes('#suites .x_content {') &&
+    !content.includes('#suites .x_panel.collapsed .x_content {')
+  ) {
+    content = content.replace(suiteScrollPatchOld, suiteScrollPatch);
     patched = true;
   } else if (!content.includes('#suites .x_content {')) {
     const suiteListRe =
@@ -122,15 +136,7 @@ function main() {
             display: flex;
             flex-direction: column;
             gap: 12px;
-        }
-
-        /* patched: scroll long suite lists inside Test Suites panel */
-        #suites .x_content {
-            justify-content: flex-start;
-            overflow-x: hidden;
-            overflow-y: auto;
-            max-height: min(70vh, 2000px);
-        }`;
+        }${suiteScrollPatch}`;
     if (!suiteListRe.test(content)) {
       console.warn('⚠️  patch #4 needle not found, skipping');
     } else {
