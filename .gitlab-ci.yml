@@ -10,16 +10,10 @@
 # 企微通知 Webhook 默认写在 config/wecom.ts；可用 WECOM_WEBHOOK_URL 环境变量覆盖。
 # 静态报告发布成功后，企微通知默认最多等待 30s（WECOM_PUBLISH_WAIT_SECONDS）再发送，避免 Coolify 未部署完导致 404。
 #
-# test-suite 项目选择（Playwright projects: api | e2e-web | e2e-mobile，逗号分隔）：
-#   TEST_SUITE_PROJECTS              覆盖全部触发源，如 api,e2e-web,e2e-mobile
-#   BRANCH_TEST_SUITE_PROJECTS       分支 13/14/im 推送，默认 api
-#   SCHEDULE_TEST_SUITE_PROJECTS     定时任务，默认 api,e2e-web,e2e-mobile
-#   MR_TEST_SUITE_PROJECTS           合并请求，默认 api
-# API 范围（仅选中 api 时生效；留空表示跑 tests/api 全量）：
-#   TEST_SUITE_API_SPEC                全局覆盖，如 tests/api/api-demo.spec.ts
-#   BRANCH_TEST_SUITE_API_SPEC         分支推送默认 tests/api/api-demo.spec.ts
-#   SCHEDULE_TEST_SUITE_API_SPEC       定时任务默认全量 api
-#   MR_TEST_SUITE_API_SPEC             MR 默认 tests/api/api-demo.spec.ts
+# test-suite 执行策略：
+#   分支推送 / 合并请求：固定只跑 api demo（tests/api/api-demo.spec.ts），验证未改动环境
+#   定时任务 schedule：通过 TEST_SUITE_PROJECTS 选择 api | e2e-web | e2e-mobile（逗号分隔）
+#                       未配置时默认 api（全量 tests/api，非 demo）
 # 报告发布到 Coolify 静态站点（推荐）：
 #   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
 #   REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git
