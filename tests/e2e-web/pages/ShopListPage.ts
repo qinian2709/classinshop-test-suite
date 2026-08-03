@@ -22,6 +22,16 @@ export class ShopListPage extends BasePage {
     return this.page.getByText(/申请小店|创建小店|开通小店/).first();
   }
 
+  /** 已有店铺卡片上的进入按钮。 */
+  get enterShopButton(): Locator {
+    return this.page.getByText(/进入店铺/).first();
+  }
+
+  async enterShop(): Promise<void> {
+    await this.enterShopButton.click();
+    await this.waitForReady();
+  }
+
   async hasRenderedAppShell(): Promise<boolean> {
     const root = this.page.locator('#root');
     const text = (await root.textContent()) ?? '';

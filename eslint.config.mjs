@@ -8,6 +8,7 @@ export default tseslint.config(
       'reports/**',
       'test-results/**',
       'playwright-report/**',
+      'allure-results/**',
       'shared/api/schema.d.ts',
       'perf/**',
     ],

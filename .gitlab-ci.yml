@@ -3,9 +3,12 @@
 #
 # 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
 #   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
-#   SHOP_DOMAIN    被测店铺域名（X-Shop-Domain），如 https://demo.shop13.eeo.im
+#   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain），如 https://appi4rhoyxe1.shop14.eeo.im
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
+#
+# 报告：playwright-enhanced-reporter → reports/latest/enhanced/enhanced-report.html
+# 打开：Job → Browse artifacts → reports/latest/enhanced/enhanced-report.html
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -24,26 +27,27 @@ workflow:
 stages:
   - prepare
   - test
-  - report
 
-# 根据分支推导被测环境；schedule 用 SCHEDULE_TEST_ENV（默认 13）。
+# 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
 prepare:
   stage: prepare
   image: ${PLAYWRIGHT_IMAGE}
   script:
     - |
       if [ "${CI_PIPELINE_SOURCE}" = "schedule" ]; then
-        test_env="${SCHEDULE_TEST_ENV:-13}"
+        test_env="${SCHEDULE_TEST_ENV:-14}"
+      elif [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ]; then
+        test_env="${SCHEDULE_TEST_ENV:-14}"
       else
         case "${CI_COMMIT_BRANCH}" in
           13) test_env="13" ;;
           14) test_env="14" ;;
           im) test_env="im" ;;
-          *) test_env="13" ;;
+          *) test_env="14" ;;
         esac
       fi
-    - echo "TEST_ENV=$test_env" > deploy.env
-    - cat deploy.env
+      echo "TEST_ENV=$test_env" > deploy.env
+      cat deploy.env
   artifacts:
     reports:
       dotenv: deploy.env
@@ -52,6 +56,28 @@ prepare:
   - corepack enable
   - corepack prepare pnpm@${PNPM_VERSION} --activate
   - pnpm install --frozen-lockfile
+
+.prepare_report_dirs: &prepare_report_dirs
+  - mkdir -p reports/latest/enhanced reports/latest/html reports/latest/artifacts reports/latest/allure-results
+
+.ensure_report_artifacts: &ensure_report_artifacts
+  - mkdir -p reports/latest
+  - |
+    if [ ! -f reports/latest/junit.xml ]; then
+      printf '%s\n' \
+        '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<testsuites name="classinshop-test-suite" tests="0" failures="0" errors="0" skipped="0"></testsuites>' \
+        > reports/latest/junit.xml
+      echo "WARN: junit.xml missing after tests; wrote empty placeholder."
+    fi
+  - |
+    if [ -f reports/latest/enhanced/enhanced-report.html ]; then
+      echo "Enhanced report ready: reports/latest/enhanced/enhanced-report.html"
+      ls -la reports/latest/enhanced/ | head -20
+    else
+      echo "WARN: enhanced-report.html missing under reports/latest/enhanced/"
+      find reports -maxdepth 4 -type f \( -name '*.html' -o -name 'junit.xml' \) 2>/dev/null | head -40 || true
+    fi
 
 # 接口自动化：每次都跑，是最低红线。
 test-api:
@@ -62,14 +88,18 @@ test-api:
       artifacts: true
   script:
     - *install
+    - *prepare_report_dirs
     # 串行执行：被测环境 WAF 会拦截并发突发请求
     - pnpm exec playwright test --project=api --workers=1
+  after_script:
+    - *ensure_report_artifacts
   artifacts:
     when: always
+    expose_as: 'Enhanced Report API'
     paths:
       - reports/
     reports:
-      junit: reports/junit.xml
+      junit: reports/latest/junit.xml
     expire_in: 1 week
 
 # E2E：仅在分支 13/14/im 与 schedule 跑（依赖可访问站点 + 浏览器），失败不阻断主流程。
@@ -85,29 +115,15 @@ test-e2e:
   allow_failure: true
   script:
     - *install
+    - *prepare_report_dirs
     - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
+  after_script:
+    - *ensure_report_artifacts
   artifacts:
     when: always
+    expose_as: 'Enhanced Report E2E'
     paths:
       - reports/
     reports:
-      junit: reports/junit.xml
-    expire_in: 1 week
-
-# 汇总：发布 HTML 报告为 GitLab Pages 制品（可在流水线制品中下载查看）。
-pages:
-  stage: report
-  image: ${PLAYWRIGHT_IMAGE}
-  needs:
-    - job: test-api
-      artifacts: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-  script:
-    - mkdir -p public
-    - cp -r reports/html/* public/ 2>/dev/null || echo "no html report"
-  artifacts:
-    paths:
-      - public
+      junit: reports/latest/junit.xml
     expire_in: 1 week

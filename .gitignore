@@ -4,12 +4,14 @@ node_modules/
 # build / generated
 shared/api/schema.d.ts
 
-# test artifacts
+# test artifacts — everything lives under reports/
 reports/*
 !reports/.gitkeep
+# legacy / accidental Playwright defaults (should not be created anymore)
 test-results/
 playwright-report/
 blob-report/
+allure-results/
 .playwright/
 perf/results/
 

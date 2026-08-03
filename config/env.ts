@@ -1,16 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
 export type EnvName = '13' | '14' | 'im';
 
-const ROOT = process.cwd();
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function loadEnvFile(file: string): void {
   const full = path.join(ROOT, file);
   if (fs.existsSync(full)) {
-    // override:false → 已存在的变量不被覆盖，故 shell 显式传参 > .env.local > 环境域名文件。
-    dotenv.config({ path: full, override: false });
+    const parsed = dotenv.parse(fs.readFileSync(full));
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!(process.env[key] ?? '').trim()) {
+        process.env[key] = value;
+      }
+    }
   }
 }
 
@@ -24,12 +29,16 @@ export const TEST_ENV: EnvName = ((): EnvName => {
   throw new Error(`非法 TEST_ENV=${raw}，仅支持 13 | 14 | im`);
 })();
 
-// 再加载对应环境的域名文件与通用 .env。
+// 再加载对应环境的域名文件与通用 .env。空字符串视为未配置，允许环境文件补齐。
 loadEnvFile(`.env.${TEST_ENV}`);
 loadEnvFile('.env');
 
 function get(key: string, fallback = ''): string {
   return (process.env[key] ?? fallback).trim();
+}
+
+function getBoolean(key: string): boolean {
+  return ['1', 'true', 'yes', 'on'].includes(get(key).toLowerCase());
 }
 
 function required(key: string): string {
@@ -52,14 +61,14 @@ export interface EnvConfig {
   loginOrigin: string;
   /** 静态资源域名 */
   staticHost: string;
-  /** 被测店铺域名（X-Shop-Domain 头） */
-  shopDomain: string;
   /** 被测店铺 ID（/shop/:shopId 接口） */
   shopId: string;
   /** PC 后台 E2E 基础地址 */
   webBaseURL: string;
-  /** H5 E2E 基础地址 */
+  /** C 端 H5 店铺 URL：e2e-mobile baseURL，同时作为 API X-Shop-Domain */
   mobileBaseURL: string;
+  /** E2E 关键步骤截图开关 */
+  e2eStepScreenshots: boolean;
 }
 
 export const env: EnvConfig = {
@@ -69,8 +78,8 @@ export const env: EnvConfig = {
   shopHost: get('SHOP_HOST'),
   loginOrigin: get('LOGIN_ORIGIN'),
   staticHost: get('STATIC_HOST'),
-  shopDomain: get('SHOP_DOMAIN'),
   shopId: get('SHOP_ID'),
   webBaseURL: get('WEB_BASE_URL', get('SHOP_HOST')),
-  mobileBaseURL: get('MOBILE_BASE_URL', get('SHOP_DOMAIN')),
+  mobileBaseURL: get('MOBILE_BASE_URL'),
+  e2eStepScreenshots: getBoolean('E2E_STEP_SCREENSHOTS'),
 };
