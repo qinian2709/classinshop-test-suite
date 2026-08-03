@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
+import { sendWeComNotification } from './wecom-notify.js';
 
 type EnvName = '13' | '14' | 'im';
 type ProjectName =
@@ -61,7 +62,7 @@ Options:
   --enhanced                 显式打开 Enhanced HTML 报告（也可单独使用；报告本身每次运行都会生成）
   --allure                   测试结束后生成 Allure HTML 报告
   --open                     测试结束后打开报告：默认 Enhanced；配合 --allure 打开 Allure；配合 --report 打开 Playwright HTML
-  --notify                   测试结束后模拟发送企微机器人通知
+  --notify                   测试结束后发送企微机器人通知（需 WECOM_WEBHOOK_URL）
   --                         后面的参数原样透传给 playwright test
 `);
   process.exit(exitCode);
@@ -478,79 +479,44 @@ function openEnhancedReport(reportPaths: ReportPaths): number {
   return openFileInBrowser(reportPaths.enhancedIndex);
 }
 
-interface JUnitSummary {
-  tests: number;
-  failures: number;
-  skipped: number;
-  errors: number;
-  time: number;
-}
-
-function readNumberAttr(attrs: string, name: keyof JUnitSummary): number {
-  const match = new RegExp(`${name}="([^"]*)"`).exec(attrs);
-  return match ? Number(match[1]) : 0;
-}
-
-function readJUnitSummary(reportPaths: ReportPaths): JUnitSummary | null {
-  const file = resolveRootPath(reportPaths.junitFile);
-  if (!fs.existsSync(file)) return null;
-
-  const xml = fs.readFileSync(file, 'utf8');
-  const match = /<testsuites\b([^>]*)>/.exec(xml) ?? /<testsuite\b([^>]*)>/.exec(xml);
-  if (!match) return null;
-
-  const attrs = match[1] ?? '';
-  return {
-    tests: readNumberAttr(attrs, 'tests'),
-    failures: readNumberAttr(attrs, 'failures'),
-    skipped: readNumberAttr(attrs, 'skipped'),
-    errors: readNumberAttr(attrs, 'errors'),
-    time: readNumberAttr(attrs, 'time'),
-  };
-}
-
-function simulateWeComNotification(
+async function notifyWeComIfRequested(
   options: Options,
   target: string,
   exitCode: number,
   allureReportGenerated: boolean,
   reportPaths: ReportPaths,
-): void {
-  const summary = readJUnitSummary(reportPaths);
-  const status =
-    exitCode !== 0
-      ? '失败'
-      : summary && summary.tests > 0 && summary.tests === summary.skipped
-        ? '跳过'
-        : '通过';
+): Promise<void> {
+  if (!options.notify) return;
+
   const reportPath = path.join(ROOT, reportPaths.htmlIndex);
   const reportUrl = process.env.REPORT_URL || reportPath;
-  const enhancedReportUrl =
-    process.env.ENHANCED_REPORT_URL || path.join(ROOT, reportPaths.enhancedIndex);
+  const enhancedReportPath = path.join(ROOT, reportPaths.enhancedIndex);
+  const enhancedReportUrl = process.env.ENHANCED_REPORT_URL?.trim() || enhancedReportPath;
   const allureReportUrl = process.env.ALLURE_REPORT_URL || path.join(ROOT, reportPaths.allureIndex);
-  const summaryLine = summary
-    ? `总数 ${summary.tests}，失败 ${summary.failures}，错误 ${summary.errors}，跳过 ${summary.skipped}，耗时 ${summary.time.toFixed(2)}s`
-    : '未读取到 JUnit 汇总';
-  const content = [
-    `### ClassInShop 测试${status}`,
-    `> 环境：${options.env}`,
-    `> 目标：${target}`,
-    `> 结果：${summaryLine}`,
-    `> Enhanced Report：${enhancedReportUrl}`,
-    `> HTML Report：${reportUrl}`,
-    ...(allureReportGenerated ? [`> Allure Report：${allureReportUrl}`] : []),
-    `> JUnit Report：${path.join(ROOT, reportPaths.junitFile)}`,
-  ].join('\n');
-  const payload = {
-    msgtype: 'markdown',
-    markdown: { content },
-  };
 
-  console.log('[test] Simulating WeCom robot notification...');
-  console.log('[test] Replace this log with POST WEWORK_WEBHOOK_URL when ready.');
-  console.log(JSON.stringify(payload, null, 2));
+  try {
+    await sendWeComNotification({
+      testEnv: options.env,
+      target,
+      exitCode,
+      junitFile: reportPaths.junitFile,
+      enhancedReportUrl,
+      htmlReportUrl: reportUrl,
+      allureReportUrl,
+      allureReportGenerated,
+      pipelineUrl: process.env.CI_PIPELINE_URL,
+      jobUrl: process.env.CI_JOB_URL,
+      projectName: process.env.CI_PROJECT_NAME,
+      refName: process.env.CI_COMMIT_REF_NAME,
+      jobName: process.env.CI_JOB_NAME,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[test] WeCom notification failed: ${message}`);
+  }
 }
 
+async function main(): Promise<number> {
 const options = parseArgs(process.argv.slice(2));
 const project = inferProject(options.file, options.project);
 assertLocalMiniprogram(project);
@@ -601,9 +567,13 @@ if (options.allure) {
   allureReportGenerated = result.generated;
 }
 
-if (options.notify) {
-  simulateWeComNotification(options, target ?? 'api + e2e-web + e2e-mobile', testExitCode, allureReportGenerated, reportPaths);
-}
+await notifyWeComIfRequested(
+  options,
+  target ?? 'api + e2e-web + e2e-mobile',
+  testExitCode,
+  allureReportGenerated,
+  reportPaths,
+);
 
 let openExitCode = 0;
 const shouldOpenEnhanced =
@@ -622,4 +592,12 @@ if (options.open || options.enhanced || options.report) {
   }
 }
 
-process.exit(testExitCode || allureExitCode || openExitCode);
+return testExitCode || allureExitCode || openExitCode;
+}
+
+main()
+  .then((code) => process.exit(code))
+  .catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
