@@ -22,7 +22,7 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/（每次 pipeline 仅一份报告）
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅留 Artifacts）
 #
 # 设计：一个 test-suite Job 内一次 playwright test，api + e2e 汇总到同一份 Enhanced 报告；
 # 避免 test-api / test-e2e 并行导致双报告、双企微通知。
