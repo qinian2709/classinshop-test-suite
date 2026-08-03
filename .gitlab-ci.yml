@@ -2,13 +2,19 @@
 # 与其他仓库一致，按分支 13/14/im 触发；并支持定时（schedule）夜间回归。
 #
 # 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
+#   WECOM_WEBHOOK_URL  企微机器人 Webhook，如 https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx
 #   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
 #   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain），如 https://appi4rhoyxe1.shop14.eeo.im
 #   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
 #   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 #
-# 报告：playwright-enhanced-reporter → reports/latest/enhanced/enhanced-report.html
-# 打开：Job → Browse artifacts → reports/latest/enhanced/enhanced-report.html
+# 报告发布到 Coolify 静态站点（推荐）：
+#   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
+#   REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git
+#   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
+# 或 rsync/local 备选：
+#   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/  并同步 latest/
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -79,20 +85,66 @@ prepare:
       find reports -maxdepth 4 -type f \( -name '*.html' -o -name 'junit.xml' \) 2>/dev/null | head -40 || true
     fi
 
+.publish_report: &publish_report
+  - |
+    if [ -n "${REPORT_PUBLISH_BASE_URL:-}" ] && { [ -n "${REPORT_PUBLISH_GIT_REPO:-}" ] || [ -n "${REPORT_PUBLISH_RSYNC_TARGET:-}" ] || [ -n "${REPORT_PUBLISH_LOCAL_DIR:-}" ]; }; then
+      corepack enable
+      corepack prepare pnpm@${PNPM_VERSION} --activate
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq git rsync openssh-client >/dev/null 2>&1 || true
+      fi
+      eval "$(pnpm exec tsx scripts/publish-report.ts \
+        --env "${TEST_ENV}" \
+        --target "${NOTIFY_TARGET}" \
+        --source reports/latest/enhanced \
+        --pipeline-id "${CI_PIPELINE_ID}" \
+        --ref "${CI_COMMIT_REF_NAME}")" \
+        || echo "WARN: publish-report failed; WeCom will fallback to GitLab Artifacts link."
+    else
+      echo "INFO: REPORT_PUBLISH_* not configured; skip static report publish."
+    fi
+
+.send_wecom_notify: &send_wecom_notify
+  - |
+    if [ -z "${WECOM_WEBHOOK_URL:-}" ]; then
+      echo "WARN: WECOM_WEBHOOK_URL not set; skip WeCom notification."
+    else
+      corepack enable
+      corepack prepare pnpm@${PNPM_VERSION} --activate
+      pnpm exec tsx scripts/wecom-notify.ts \
+        --env "${TEST_ENV}" \
+        --target "${NOTIFY_TARGET}" \
+        --exit-code "${CI_JOB_STATUS:-failed}" \
+        --junit reports/latest/junit.xml \
+        --job-name "${CI_JOB_NAME}" \
+        --project-name "${CI_PROJECT_NAME}" \
+        --ref-name "${CI_COMMIT_REF_NAME}" \
+        --job-url "${CI_JOB_URL}" \
+        --pipeline-url "${CI_PIPELINE_URL}" \
+        --enhanced-report-url "${ENHANCED_REPORT_URL:-${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/browse/reports/latest/enhanced/}" \
+        || echo "WARN: WeCom notification failed"
+    fi
+
 # 接口自动化：每次都跑，是最低红线。
 test-api:
   stage: test
   image: ${PLAYWRIGHT_IMAGE}
+  variables:
+    NOTIFY_TARGET: api
   needs:
     - job: prepare
       artifacts: true
   script:
     - *install
     - *prepare_report_dirs
-    # 串行执行：被测环境 WAF 会拦截并发突发请求
-    - pnpm exec playwright test --project=api --workers=1
+    # TODO(验证后恢复全量): 临时只跑 1 条 API，方便验证 Enhanced 报告
+    - pnpm exec playwright test --project=api --workers=1 tests/api/api-demo.spec.ts
+    # 全量恢复时改回:
+    # - pnpm exec playwright test --project=api --workers=1
   after_script:
     - *ensure_report_artifacts
+    - *publish_report
+    - *send_wecom_notify
   artifacts:
     when: always
     expose_as: 'Enhanced Report API'
@@ -106,6 +158,8 @@ test-api:
 test-e2e:
   stage: test
   image: ${PLAYWRIGHT_IMAGE}
+  variables:
+    NOTIFY_TARGET: e2e-web+e2e-mobile
   needs:
     - job: prepare
       artifacts: true
@@ -119,6 +173,8 @@ test-e2e:
     - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
   after_script:
     - *ensure_report_artifacts
+    - *publish_report
+    - *send_wecom_notify
   artifacts:
     when: always
     expose_as: 'Enhanced Report E2E'
