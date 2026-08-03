@@ -14,7 +14,7 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/  并同步 latest/
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/（每次 CI 仅一份报告）
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -110,9 +110,7 @@ prepare:
       --job-name "${CI_JOB_NAME}" \
       --project-name "${CI_PROJECT_NAME}" \
       --ref-name "${CI_COMMIT_REF_NAME}" \
-      --job-url "${CI_JOB_URL}" \
       --pipeline-url "${CI_PIPELINE_URL}" \
-      --enhanced-report-url "${ENHANCED_REPORT_URL:-${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/browse/reports/latest/enhanced/}" \
       || echo "WARN: WeCom notification failed"
 
 # 接口自动化：每次都跑，是最低红线。

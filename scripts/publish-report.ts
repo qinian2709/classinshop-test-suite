@@ -32,7 +32,8 @@ Environment (CI/CD Variables):
   REPORT_PUBLISH_LOCAL_DIR         （可选）本机目录拷贝
 
 Outputs:
-  export ENHANCED_REPORT_URL=...   # eval 后供企微通知使用
+  reports/latest/publish.env       ENHANCED_REPORT_URL=...（供企微通知读取）
+  export ENHANCED_REPORT_URL=...   # eval 后供 shell 使用
 `);
   process.exit(1);
 }
@@ -61,14 +62,19 @@ function resolveSourceDir(source: string): string {
   return absolute;
 }
 
-function buildRelativePaths(options: PublishOptions): { history: string; latest: string } {
+function buildRelativePath(options: PublishOptions): string {
   const env = sanitizeSegment(options.testEnv);
   const target = sanitizeSegment(options.target);
   const pipeline = sanitizeSegment(options.pipelineId);
-  return {
-    history: `${env}/${target}/${pipeline}/enhanced`,
-    latest: `${env}/${target}/latest/enhanced`,
-  };
+  return `${env}/${target}/${pipeline}/enhanced`;
+}
+
+export const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
+
+function writePublishEnv(publicUrl: string): void {
+  const dir = path.dirname(PUBLISH_ENV_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(PUBLISH_ENV_FILE, `ENHANCED_REPORT_URL=${publicUrl}\n`, 'utf8');
 }
 
 function buildPublicUrl(baseUrl: string, relativeDir: string): string {
@@ -122,15 +128,14 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const paths = buildRelativePaths(options);
-  const publicUrl = buildPublicUrl(baseUrl, paths.history);
+  const relativePath = buildRelativePath(options);
+  const publicUrl = buildPublicUrl(baseUrl, relativePath);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'classinshop-report-publish-'));
   const authUrl = buildAuthenticatedGitUrl(gitRepo, gitToken);
 
   try {
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT);
-    copyDirectory(sourceDir, path.join(workDir, paths.history));
-    copyDirectory(sourceDir, path.join(workDir, paths.latest));
+    copyDirectory(sourceDir, path.join(workDir, relativePath));
 
     const gitEnv = {
       ...process.env,
@@ -140,7 +145,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
       GIT_COMMITTER_EMAIL: process.env.REPORT_PUBLISH_GIT_AUTHOR_EMAIL || 'ci@classinshop.local',
     };
 
-    runCommand('git', ['add', paths.history, paths.latest], workDir, gitEnv);
+    runCommand('git', ['add', relativePath], workDir, gitEnv);
     runCommand(
       'git',
       [
@@ -160,9 +165,9 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
 
-  console.error(`[publish-report] Coolify history: ${publicUrl}`);
-  console.error(`[publish-report] Coolify latest : ${buildPublicUrl(baseUrl, paths.latest)}`);
+  console.error(`[publish-report] Report URL: ${publicUrl}`);
   console.error('[publish-report] Coolify redeploy will start automatically after git push (~1-2 min).');
+  writePublishEnv(publicUrl);
   return publicUrl;
 }
 
@@ -195,20 +200,18 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const paths = buildRelativePaths(options);
+  const relativePath = buildRelativePath(options);
   const sshKey = process.env.REPORT_PUBLISH_SSH_PRIVATE_KEY?.trim();
-  const publicUrl = buildPublicUrl(baseUrl, paths.history);
+  const publicUrl = buildPublicUrl(baseUrl, relativePath);
 
   if (rsyncTarget) {
-    publishToRemoteRoot(sourceDir, rsyncTarget, paths.history, sshKey);
-    publishToRemoteRoot(sourceDir, rsyncTarget, paths.latest, sshKey);
+    publishToRemoteRoot(sourceDir, rsyncTarget, relativePath, sshKey);
   } else if (localDir) {
-    copyDirectory(sourceDir, path.join(localDir, paths.history));
-    copyDirectory(sourceDir, path.join(localDir, paths.latest));
+    copyDirectory(sourceDir, path.join(localDir, relativePath));
   }
 
-  console.error(`[publish-report] History: ${publicUrl}`);
-  console.error(`[publish-report] Latest : ${buildPublicUrl(baseUrl, paths.latest)}`);
+  console.error(`[publish-report] Report URL: ${publicUrl}`);
+  writePublishEnv(publicUrl);
   return publicUrl;
 }
 

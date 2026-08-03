@@ -71,11 +71,25 @@ function isHttpUrl(value: string | undefined): value is string {
   return !!value?.trim().startsWith('http');
 }
 
+const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
+
+function readPublishedReportUrl(): string | undefined {
+  if (!fs.existsSync(PUBLISH_ENV_FILE)) return undefined;
+  const parsed = dotenv.parse(fs.readFileSync(PUBLISH_ENV_FILE));
+  const url = parsed.ENHANCED_REPORT_URL?.trim();
+  return url && url.startsWith('http') ? url : undefined;
+}
+
 export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
-  const explicit = (input.enhancedReportUrl ?? process.env.ENHANCED_REPORT_URL)?.trim();
-  const enhanced = isHttpUrl(explicit) ? explicit : buildGitLabEnhancedReportUrl();
-  const artifactsBrowse = buildGitLabArtifactsBrowseUrl();
-  const job = input.jobUrl?.trim() || buildGitLabJobUrl() || process.env.CI_JOB_URL?.trim();
+  const published = readPublishedReportUrl();
+  if (published) {
+    return { enhanced: published };
+  }
+
+  const explicit = (process.env.ENHANCED_REPORT_URL ?? input.enhancedReportUrl)?.trim();
+  const enhanced = isHttpUrl(explicit) && !explicit.includes('/artifacts/') ? explicit : undefined;
+  const artifactsBrowse = enhanced ? undefined : buildGitLabArtifactsBrowseUrl();
+  const job = enhanced ? undefined : input.jobUrl?.trim() || buildGitLabJobUrl() || process.env.CI_JOB_URL?.trim();
   const localCandidate = input.enhancedReportUrl?.trim();
   const localPath =
     localCandidate && !isHttpUrl(localCandidate) && fs.existsSync(localCandidate)
@@ -86,36 +100,23 @@ export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
 }
 
 function formatReportSection(links: ReportLinks): string[] {
-  const lines: string[] = ['**测试报告**'];
-
-  const artifactsUrl = links.enhanced ?? links.artifactsBrowse;
-  const reportLabel =
-    artifactsUrl && !artifactsUrl.includes('/artifacts/')
-      ? '在线测试报告'
-      : 'Artifacts 报告目录';
-
-  if (artifactsUrl) {
-    lines.push(`[${reportLabel}](${artifactsUrl})`);
-  } else if (links.job) {
-    lines.push(`[打开 Job 查看产物](${links.job})`);
-  }
-
-  if (artifactsUrl && links.job) {
-    lines.push(`[Job 详情](${links.job})`);
-  }
-
-  if (!links.enhanced && !links.artifactsBrowse && !links.job) {
+  const reportUrl = links.enhanced ?? links.artifactsBrowse;
+  if (!reportUrl) {
     if (links.localPath) {
       const relative = path.relative(ROOT, links.localPath) || links.localPath;
-      lines.push(`本地路径：${colorize(relative, 'comment')}`);
-    } else {
-      lines.push(
-        colorize('暂无在线报告链接。CI 中需 Job Artifacts；本地请 pnpm report:enhanced', 'comment'),
-      );
+      return ['**测试报告**', `本地路径：${colorize(relative, 'comment')}`];
     }
+    if (links.job) {
+      return ['**测试报告**', `[打开 Job 查看产物](${links.job})`];
+    }
+    return [
+      '**测试报告**',
+      colorize('暂无在线报告链接。请先执行 publish-report 或本地 pnpm report:enhanced', 'comment'),
+    ];
   }
 
-  return lines;
+  const label = reportUrl.includes('/artifacts/') ? 'Artifacts 报告目录' : '在线测试报告';
+  return ['**测试报告**', `[${label}](${reportUrl})`];
 }
 
 function colorize(value: number | string, tone: 'info' | 'comment' | 'warning'): string {
