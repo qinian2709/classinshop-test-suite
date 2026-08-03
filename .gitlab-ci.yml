@@ -14,7 +14,10 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/（每次 CI 仅一份报告）
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/（每次 pipeline 仅一份报告）
+#
+# 设计：一个 test-suite Job 内一次 playwright test，api + e2e 汇总到同一份 Enhanced 报告；
+# 避免 test-api / test-e2e 并行导致双报告、双企微通知。
 
 variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
@@ -113,55 +116,42 @@ prepare:
       --pipeline-url "${CI_PIPELINE_URL}" \
       || echo "WARN: WeCom notification failed"
 
-# 接口自动化：每次都跑，是最低红线。
-test-api:
+# 单次 pipeline 只跑一个 Job：api + e2e 汇总到同一份 Enhanced / JUnit 报告，只发布一次、只通知一次。
+test-suite:
   stage: test
   image: ${PLAYWRIGHT_IMAGE}
-  variables:
-    NOTIFY_TARGET: api
-  needs:
-    - job: prepare
-      artifacts: true
-  script:
-    - *install
-    - *prepare_report_dirs
-    # TODO(验证后恢复全量): 临时只跑 1 条 API，方便验证 Enhanced 报告
-    - pnpm exec playwright test --project=api --workers=1 tests/api/api-demo.spec.ts
-    # 全量恢复时改回:
-    # - pnpm exec playwright test --project=api --workers=1
-  after_script:
-    - *post_test_finalize
-  artifacts:
-    when: always
-    expose_as: 'Enhanced Report API'
-    paths:
-      - reports/
-    reports:
-      junit: reports/latest/junit.xml
-    expire_in: 1 week
-
-# E2E：仅在分支 13/14/im 与 schedule 跑（依赖可访问站点 + 浏览器），失败不阻断主流程。
-test-e2e:
-  stage: test
-  image: ${PLAYWRIGHT_IMAGE}
-  variables:
-    NOTIFY_TARGET: e2e-web+e2e-mobile
   needs:
     - job: prepare
       artifacts: true
   rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      variables:
+        NOTIFY_TARGET: api
     - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
+      variables:
+        NOTIFY_TARGET: core
     - if: $CI_PIPELINE_SOURCE == "schedule"
-  allow_failure: true
+      variables:
+        NOTIFY_TARGET: core
   script:
     - *install
     - *prepare_report_dirs
-    - pnpm exec playwright test --project=e2e-web --project=e2e-mobile
+    - |
+      if [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ]; then
+        echo "[test-suite] MR smoke: api only"
+        # TODO(验证后恢复全量): 临时只跑 1 条 API，方便验证 Enhanced 报告
+        pnpm exec playwright test --project=api --workers=1 tests/api/api-demo.spec.ts
+        # 全量恢复时改回:
+        # pnpm exec playwright test --project=api --workers=1
+      else
+        echo "[test-suite] Full run: api + e2e-web + e2e-mobile (single report)"
+        pnpm exec playwright test --project=api --workers=1 --project=e2e-web --project=e2e-mobile
+      fi
   after_script:
     - *post_test_finalize
   artifacts:
     when: always
-    expose_as: 'Enhanced Report E2E'
+    expose_as: 'Enhanced Report'
     paths:
       - reports/
     reports:
