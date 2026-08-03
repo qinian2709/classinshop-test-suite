@@ -1,12 +1,13 @@
 # classinshop-test-suite CI：运行接口自动化与 E2E，产出统一报告。
 # 与其他仓库一致，按分支 13/14/im 触发；并支持定时（schedule）夜间回归。
 #
-# 需要在 GitLab CI/CD Variables 中配置（建议 Masked）：
-#   TEST_TOKEN     被测环境某测试用户的 accessToken（接口/受保护用例需要）
-#   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain），如 https://appi4rhoyxe1.shop14.eeo.im
-#   TEST_GOODS_ID  （可选）用于正向算价的商品 ID
-#   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
+# 需要在 GitLab CI/CD Variables 中配置的被测环境凭据（Token、店铺域名等），见 docs/run-guide.md。
+# Schedule 执行配置（跑哪些项目、发布报告、企微）见 docs/pipeline-schedule-variables.md。
 #
+# 常用凭据示例（建议 Masked）：
+#   TEST_TOKEN     被测环境测试用户 accessToken
+#   MOBILE_BASE_URL  C 端 H5 店铺 URL（X-Shop-Domain）
+#   E2E_USERNAME / E2E_PASSWORD （可选）E2E 登录账号
 # 企微通知 Webhook 默认写在 config/wecom.ts；可用 WECOM_WEBHOOK_URL 环境变量覆盖。
 # 静态报告发布成功后，企微通知默认最多等待 30s（WECOM_PUBLISH_WAIT_SECONDS）再发送，避免 Coolify 未部署完导致 404。
 #
@@ -14,6 +15,7 @@
 #   分支推送 / 合并请求：固定只跑 api demo（tests/api/api-demo.spec.ts），验证未改动环境
 #   定时任务 schedule：通过 TEST_SUITE_PROJECTS 选择 api | e2e-web | e2e-mobile（逗号分隔）
 #                       未配置时默认 api（全量 tests/api，非 demo）
+# Schedule 变量完整说明见 docs/pipeline-schedule-variables.md
 # 报告发布到 Coolify 静态站点（推荐）：
 #   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
 #   REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git
