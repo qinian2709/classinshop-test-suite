@@ -72,6 +72,12 @@ prepare:
 .post_test_finalize: &post_test_finalize
   - |
     set +e
+    if [ -f notify.env ]; then
+      set -a
+      . ./notify.env
+      set +a
+    fi
+    NOTIFY_TARGET="${NOTIFY_TARGET:-core}"
     mkdir -p reports/latest
     if [ ! -f reports/latest/junit.xml ]; then
       printf '%s\n' \
@@ -123,27 +129,19 @@ test-suite:
   needs:
     - job: prepare
       artifacts: true
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      variables:
-        NOTIFY_TARGET: api
-    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-      variables:
-        NOTIFY_TARGET: core
-    - if: $CI_PIPELINE_SOURCE == "schedule"
-      variables:
-        NOTIFY_TARGET: core
   script:
     - *install
     - *prepare_report_dirs
     - |
       if [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ]; then
+        echo "NOTIFY_TARGET=api" > notify.env
         echo "[test-suite] MR smoke: api only"
         # TODO(验证后恢复全量): 临时只跑 1 条 API，方便验证 Enhanced 报告
         pnpm exec playwright test --project=api --workers=1 tests/api/api-demo.spec.ts
         # 全量恢复时改回:
         # pnpm exec playwright test --project=api --workers=1
       else
+        echo "NOTIFY_TARGET=core" > notify.env
         echo "[test-suite] Full run: api + e2e-web + e2e-mobile (single report)"
         pnpm exec playwright test --project=api --workers=1 --project=e2e-web --project=e2e-mobile
       fi
