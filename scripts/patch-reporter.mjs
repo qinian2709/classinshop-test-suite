@@ -99,9 +99,49 @@ function main() {
     }
   }
 
+  // 4. Test Suites panel: internal scroll when many suite cards (overflow:hidden clips content)
+  // NOTE: do NOT set min-height:0 on .suite-list — it collapses suite-card rows in flex layout.
+  if (content.includes('#suites .suite-list {\n            min-height: 0;\n        }')) {
+    content = content.replace(
+      /\r?\n\r?\n        \/\* patched: scroll long suite lists inside Test Suites panel \*\/\r?\n        #suites \.x_content \{\r?\n            justify-content: flex-start;\r?\n            overflow-x: hidden;\r?\n            overflow-y: auto;\r?\n            max-height: min\(70vh, 2000px\);\r?\n        \}\r?\n\r?\n        #suites \.suite-list \{\r?\n            min-height: 0;\r?\n        \}/,
+      `
+
+        /* patched: scroll long suite lists inside Test Suites panel */
+        #suites .x_content {
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: min(70vh, 2000px);
+        }`,
+    );
+    patched = true;
+  } else if (!content.includes('#suites .x_content {')) {
+    const suiteListRe =
+      /\.suite-list \{\r?\n            display: flex;\r?\n            flex-direction: column;\r?\n            gap: 12px;\r?\n        \}/;
+    const suiteListReplacement = `.suite-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        /* patched: scroll long suite lists inside Test Suites panel */
+        #suites .x_content {
+            justify-content: flex-start;
+            overflow-x: hidden;
+            overflow-y: auto;
+            max-height: min(70vh, 2000px);
+        }`;
+    if (!suiteListRe.test(content)) {
+      console.warn('⚠️  patch #4 needle not found, skipping');
+    } else {
+      content = content.replace(suiteListRe, suiteListReplacement);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
-    console.log('✅ playwright-enhanced-reporter patched (environment/metrics widgets)');
+    console.log('✅ playwright-enhanced-reporter patched');
   } else {
     console.log('ℹ️  playwright-enhanced-reporter already patched, skipping');
   }

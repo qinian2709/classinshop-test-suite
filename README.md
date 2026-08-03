@@ -64,6 +64,8 @@ pnpm report:allure:open
 ```
 
 更完整的运行说明（鉴权、店铺域名、小程序、k6、CI）见 [docs/run-guide.md](docs/run-guide.md)；
+GitLab **Pipeline Schedule 执行配置**（环境 / 项目 / 报告发布）见 [docs/pipeline-schedule-variables.md](docs/pipeline-schedule-variables.md)；
+被测环境凭据（Token、域名等）见 [docs/run-guide.md](docs/run-guide.md)；
 用例编写规范见 [docs/test-guidelines.md](docs/test-guidelines.md)。
 
 ## 常用脚本
