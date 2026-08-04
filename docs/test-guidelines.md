@@ -13,6 +13,7 @@
 - 路径常量统一用 `Endpoints`（`shared/api/endpoints.ts`），禁止在用例里硬编码路径字符串。
 - 鉴权请求用 `api` fixture（自动注入 token + X-Shop-Domain）；匿名请求用 `anonApi`。
 - 断言业务码：成功 `body.code === SUCCESS_CODE(0)`，失败用具体错误码或 `not.toBe(SUCCESS_CODE)`。
+- 所有经 `ApiHelper` 的接口调用会自动断言响应耗时 ≤ `API_MAX_RESPONSE_MS`（项目级配置，见 `config/api.ts`）；禁止在用例里写死毫秒数。
 
 ```ts
 import { test, expect } from '@shared';

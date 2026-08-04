@@ -260,8 +260,9 @@ export const Endpoints = {
     ordersList: (shopId: string | number) => `/shop/${shopId}/orders`,
     orderTracking: (shopId: string | number, orderId: string | number) =>
       `/shop/${shopId}/orders/${orderId}/tracking`,
-    // 商家退款（直接退款）
+    // 商家退款（直接退款；POST 同路径发起退款）
     refundList: (shopId: string | number) => `/shop/${shopId}/refund`,
+    refundCreate: (shopId: string | number) => `/shop/${shopId}/refund`,
     refundBookingPreviewShop: (shopId: string | number) => `/shop/${shopId}/refund/booking-preview`,
     // 退款申请（用户发起，商家审核）
     refundRequestList: (shopId: string | number) => `/shop/${shopId}/refund/requests`,

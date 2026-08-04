@@ -1,5 +1,5 @@
 import { test, expect } from '@shared';
-import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
+import { assertApiResponseDuration, attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
 import { accounts, formatAuthorizationHeader } from '@config';
 
 interface ShopSummary {
@@ -38,12 +38,15 @@ test.describe('API Demo：14 环境我的店铺接口 @smoke', () => {
       ...requestHeaders,
       authorization: formatAuthorizationHeader(accounts.token),
     };
+    const started = Date.now();
     const response = await fetch(url, {
       method: 'GET',
       headers: actualHeaders,
     });
     const status = response.status;
     const body = (await response.json()) as ApiDemoResponse;
+    const durationMs = Date.now() - started;
+    assertApiResponseDuration(`GET ${Endpoints.user.myShops}`, durationMs);
 
     await attachApiCallLog({
       testInfo: test.info(),
@@ -58,7 +61,13 @@ test.describe('API Demo：14 环境我的店铺接口 @smoke', () => {
         headers: response.headers,
         body,
       },
-      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', 'data 应为店铺列表数组'],
+      durationMs,
+      assertions: [
+        'HTTP 状态码应为 200',
+        '业务 code 应为成功码',
+        'data 应为店铺列表数组',
+        `响应耗时应 ≤ 配置上限（实际 ${durationMs}ms）`,
+      ],
     });
 
     expect(status, 'HTTP 状态码应为 200').toBe(200);

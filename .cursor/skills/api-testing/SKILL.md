@@ -90,7 +90,11 @@ Environment files are selected by `TEST_ENV` / `--env`:
 - `--env 14` loads `.env.local`, `.env.14`, `.env`
 - `--env im` loads `.env.local`, `.env.im`, `.env`
 
-Use `env.apiBaseURL`, `env.shopHost`, `env.mobileBaseURL`, and `env.shopId` as appropriate. Avoid hardcoded hosts and raw endpoint strings.
+Use `env.apiBaseURL`, `env.shopHost`, `env.mobileBaseURL`, and `env.shopId` as appropriate. Avoid hardcoded hosts, raw endpoint strings, and hardcoded response-time SLAs.
+
+Response-time SLA is a **project-level** constant (not env/CI):
+
+- `API_MAX_RESPONSE_MS` in `config/api.ts` (default `2000` ms; `0` disables global duration asserts). See **Response Duration** below.
 
 Do not confuse `SHOP_ID` and `MOBILE_BASE_URL`:
 
@@ -157,6 +161,57 @@ Prefer asserting both transport and business behavior when relevant:
 - `code === SUCCESS_CODE`.
 - shape/type of important `data` fields.
 - key side effects for create/update/delete flows.
+- **response duration**（见下节，由 `ApiHelper` 自动断言，无需在每个用例手写）。
+
+## Response Duration (All API Calls)
+
+**`tests/api/**` 下每一次后端接口请求**都必须满足响应耗时上限——不限于某几条用例，而是全部 API 自动化请求。
+
+统一入口：
+
+| 调用方式 | 耗时断言如何生效 |
+|----------|------------------|
+| `api` / `mobileApi` / `anonApi`（`ApiHelper`） | 构造时注入 `API_MAX_RESPONSE_MS`，`get/post/put/delete/raw/expectData` 自动断言 |
+| `loggedGet` / `loggedPost` / `loggedRaw` | 走 `ApiHelper`，附件额外记录 `durationMs` |
+| 用例内偶发裸 `fetch`（如 `api-demo` / `shop-catalog` / `goods-management` / `coupon-lifecycle`） | 必须调用 `assertApiResponseDuration(label, durationMs)` |
+| 第三方 COS 上传/下载 | 非本后端 API，可不套用该 SLA |
+| Auth bootstrap（`ApiClient` 登录换 token） | 用例前置，默认不套用该 SLA |
+
+配置（**唯一调优点**，项目级常量，**不是** `.env` / CI 变量）：
+
+| 配置 | 位置 | 说明 |
+|------|------|------|
+| `API_MAX_RESPONSE_MS` | `config/api.ts` | 全局上限，单位 ms；默认 `2000`；`0` = 关闭全局断言 |
+| `CallOptions.maxDurationMs` | 单次 `api.get/post/...` | 覆盖本次请求；`0` = 跳过本次 |
+| `ApiLogOptions.maxDurationMs` | `loggedGet` / `loggedPost` / `loggedRaw` | 透传到 `CallOptions` |
+| `assertApiResponseDuration(..., maxDurationMs?)` | `shared/http/duration.ts` | 裸 `fetch` 场景共用同一配置 |
+
+```ts
+// config/api.ts — 需要放宽/收紧时只改这里
+export const API_MAX_RESPONSE_MS = 2000;
+```
+
+```ts
+// 推荐：走 ApiHelper，自动断言
+const { body, durationMs } = await api.get(Endpoints.user.orders);
+
+// 裸 fetch：必须自行计时并断言（上限读项目配置，勿写死 2000）
+const started = Date.now();
+const response = await fetch(url, { headers });
+const body = await response.json();
+assertApiResponseDuration(`GET ${path}`, Date.now() - started);
+
+// 少数已知慢接口：仅本次放宽（须注释原因）
+await api.post(path, payload, { maxDurationMs: 5000 });
+```
+
+Rules:
+
+- Do **not** hardcode `2000` in specs; import/read `API_MAX_RESPONSE_MS` from `config/api.ts` (`@config`).
+- Do **not** put this SLA in `.env` / CI variables — it is project-level source config.
+- Prefer fixing slow APIs over raising the global limit.
+- New API tests must use `api`/`mobileApi`/`anonApi` or `logged*` helpers; if bare `fetch` to our API is unavoidable, call `assertApiResponseDuration`.
+- When attaching logs via `loggedGet` / `loggedPost`, the attachment includes `durationMs` and a duration assertion line automatically.
 
 ## Types
 
@@ -265,6 +320,7 @@ Before finishing an API test change:
 - Environment values come from `@config`.
 - Endpoints use `Endpoints`.
 - **All API test cases attach request logs using `attachApiCallLog`.**
+- **Every backend request under `tests/api` asserts duration via `API_MAX_RESPONSE_MS` (`ApiHelper` or `assertApiResponseDuration`); no hardcoded SLA ms in specs.**
 - Assertions include meaningful messages.
 - Newly generated cases include `author：<actual author>` in the scenario comment from the first draft.
 - No secrets are committed or printed.
