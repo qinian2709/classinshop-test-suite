@@ -1,14 +1,22 @@
 import { test, expect } from '@shared';
 import { Endpoints, SUCCESS_CODE, GOODS_TYPE_FIXED, loggedGet, loggedPost } from '@shared';
 import { hasApiCredential, hasMobileCredential } from '@config';
-import { buildCalculatePayload, buildCreateOrderPayload, pickNumber, asArray } from '@shared';
+import {
+  buildCalculatePayload,
+  buildCreateOrderPayload,
+  pickNumber,
+  asArray,
+  pickOrderRefundAmount,
+  buildMerchantCloseOnlineRefundPayload,
+} from '@shared';
 
 /**
- * 固定课下单链路：上架固定课（绑定班级）→ 商品详情 → 算价 → 零元购课（自动支付进班）→ 学习列表/订单详情校验。
+ * 固定课下单链路：上架固定课（绑定班级）→ 商品详情 → 算价 → 零元购课（自动支付进班）→ 学习列表/订单详情校验 → 商家退款。
  *
- * 关键点：
+ * 要点：
  *   - publishedSampleGoods 上架 goodsType=1 固定课并绑定 ClassIn 班级，非预约课；
- *   - 零元单支付成功后服务端同步进班，用 mobileApi 查学习列表与订单详情。
+ *   - 零元单支付成功后服务端同步进班，用 mobileApi 查学习列表与订单详情；
+ *   - 退款：课程全选关闭 + 线上，金额取订单（免费单为 0）。
  */
 
 test.describe('固定课下单链路（绑定班级）', () => {
@@ -45,13 +53,20 @@ test.describe('固定课下单链路（绑定班级）', () => {
     });
   });
 
-  test('零元购课 → 自动进班 → 学习列表可见', async ({ mobileApi, env, publishedSampleGoods }) => {
+  test('零元购课 → 自动进班 → 学习列表可见 → 商家退款', async ({
+    api,
+    mobileApi,
+    env,
+    publishedSampleGoods,
+  }) => {
     test.skip(!hasMobileCredential(), '未配置 C 端鉴权，跳过固定课购课/进班链路');
     expect(publishedSampleGoods.goodsType, 'fixture 应为固定课 goodsType=1').toBe(GOODS_TYPE_FIXED);
     const testInfo = test.info();
     const logBase = { testInfo, apiBaseURL: env.apiBaseURL };
 
     let orderItemId: number | undefined;
+    let orderId: number | undefined;
+    let refundAmount = 0;
 
     await test.step('学生零元购课（自动支付）', async () => {
       const payload = buildCreateOrderPayload({
@@ -65,6 +80,8 @@ test.describe('固定课下单链路（绑定班级）', () => {
       }, Endpoints.goods.orderCreate, payload);
       expect(body.code, body.msg).toBe(SUCCESS_CODE);
       orderItemId = pickNumber(body.data, ['orderItemId', 'order_item_id']);
+      orderId = pickNumber(body.data, ['orderId', 'order_id', 'id']);
+      refundAmount = pickOrderRefundAmount(body.data);
       expect(orderItemId, '下单应返回 orderItemId').toBeTruthy();
     });
 
@@ -84,6 +101,8 @@ test.describe('固定课下单链路（绑定班级）', () => {
         order?.className ?? order?.class_name,
         '固定课订单应写入班级名称（进班链路）',
       ).toBeTruthy();
+      orderId = orderId ?? pickNumber(order, ['orderId', 'order_id', 'id']);
+      refundAmount = pickOrderRefundAmount(order);
     });
 
     await test.step('学习列表（固定课 Tab）应包含该订单', async () => {
@@ -104,6 +123,21 @@ test.describe('固定课下单链路（绑定班级）', () => {
       expect(pickNumber(found, ['goodsType', 'goods_type']), '学习列表项应为固定课').toBe(
         GOODS_TYPE_FIXED,
       );
+    });
+
+    await test.step('商家退款：课程全选关闭 + 线上（金额取订单）', async () => {
+      expect(orderId, '退款前应拿到 orderId').toBeTruthy();
+      expect(refundAmount, '免费固定课退款金额应为 0').toBe(0);
+      const payload = buildMerchantCloseOnlineRefundPayload({
+        orderId: orderId!,
+        refundAmount,
+      });
+      const { body } = await loggedPost(api, {
+        ...logBase,
+        logName: '请求日志-固定课链路-商家退款.json',
+        assertions: ['商家退款业务 code 应为成功码', '退款金额应为订单金额 0'],
+      }, Endpoints.shopAdmin.refundCreate(env.shopId!), payload);
+      expect(body.code, `固定课商家退款失败：${body.msg}`).toBe(SUCCESS_CODE);
     });
   });
 });

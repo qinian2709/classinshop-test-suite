@@ -15,6 +15,8 @@ export interface ApiCallLogOptions {
     headers?: HeaderSource;
     body?: unknown;
   };
+  /** 端到端耗时（ms），从发请求到拿到响应体 */
+  durationMs?: number;
   assertions?: string[];
   name?: string;
 }
@@ -58,6 +60,7 @@ export async function attachApiCallLog(options: ApiCallLogOptions): Promise<void
           ...options.response,
           headers: redactHeaders(options.response.headers),
         },
+        ...(typeof options.durationMs === 'number' ? { durationMs: options.durationMs } : {}),
         assertions: options.assertions ?? [],
       },
       null,

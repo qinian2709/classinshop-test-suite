@@ -1,5 +1,5 @@
 import { test, expect } from '@shared';
-import { attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
+import { assertApiResponseDuration, attachApiCallLog, Endpoints, SUCCESS_CODE } from '@shared';
 import { accounts, env as configEnv, formatAuthorizationHeader, hasApiCredential } from '@config';
 import type { ListData } from '@shared';
 import type { Goods } from '@shared';
@@ -66,12 +66,15 @@ async function getJson<T>(
 ): Promise<{ status: number; body: ApiResponse<T> }> {
   const url = buildUrl(path, options.query);
   const headers = browserLikeHeaders(options.headers);
+  const started = Date.now();
   const response = await fetch(url, {
     method: 'GET',
     headers,
   });
   const status = response.status;
   const text = await response.text();
+  const durationMs = Date.now() - started;
+  assertApiResponseDuration(`GET ${path}`, durationMs);
   let body: ApiResponse<T>;
   try {
     body = JSON.parse(text) as ApiResponse<T>;
@@ -81,6 +84,7 @@ async function getJson<T>(
       name: options.logName ?? `请求日志-${path.replaceAll('/', '_') || 'root'}.json`,
       request: { method: 'GET', url, headers, body: null },
       response: { status, headers: response.headers, body: text },
+      durationMs,
       assertions: options.assertions ?? ['响应应为后端统一 JSON 信封'],
     });
     throw new Error(`非 JSON 响应（GET ${path} -> HTTP ${status}）：${text.slice(0, 200)}`);
@@ -91,7 +95,11 @@ async function getJson<T>(
     name: options.logName ?? `请求日志-${path.replaceAll('/', '_') || 'root'}.json`,
     request: { method: 'GET', url, headers, body: null },
     response: { status, headers: response.headers, body },
-    assertions: options.assertions ?? ['响应应为后端统一 JSON 信封'],
+    durationMs,
+    assertions: [
+      ...(options.assertions ?? ['响应应为后端统一 JSON 信封']),
+      `响应耗时应 ≤ 配置上限（实际 ${durationMs}ms）`,
+    ],
   });
 
   return { status, body };

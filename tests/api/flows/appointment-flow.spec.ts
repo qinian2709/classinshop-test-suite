@@ -13,10 +13,16 @@ import {
   provisionTeacherAvailableSlots,
   pickOrderTeacherId,
   futureLocalDate,
+  parseBookingRefundPreview,
+  buildAppointmentCloseOnlineRefundPayload,
+  REFUND_CHANNEL_ONLINE,
+  REPO_AUTH_CLOSE,
+  BOOKING_REFUND_MODE_CANCEL,
 } from '@shared';
 
 /**
- * 约课链路（预约课 goodsType=3）：零元预约课上架（绑定老师）→ 学生下单 → 设置老师可约时段 → 约课 → 取消。
+ * 约课链路（预约课 goodsType=3）：零元预约课上架（绑定老师）→ 学生下单 → 设置老师可约时段 → 约课 → 取消；
+ * 并对有效订单补充商家退款（课程全选关闭 + 线上，金额取 booking-preview）。
  */
 
 const WINDOW_SECONDS = 30 * 24 * 3600;
@@ -134,6 +140,99 @@ test.describe('预约课约课链路（绑定老师）', () => {
         assertions: ['应返回业务 code（可约/不可约均属正常）'],
       }, Endpoints.appointment.check, payload);
       expect(typeof body.code).toBe('number');
+    });
+  });
+
+  test('零元购预约课 → 商家退款（课程关闭·线上）', async ({
+    api,
+    mobileApi,
+    env,
+    studentAppointmentOrderItem,
+  }) => {
+    expect(studentAppointmentOrderItem.goodsType, 'fixture 应为预约课 goodsType=3').toBe(
+      GOODS_TYPE_APPOINTMENT,
+    );
+    const { orderItemId: fixtureOrderItemId } = studentAppointmentOrderItem;
+    let orderId = studentAppointmentOrderItem.orderId;
+    const testInfo = test.info();
+    const logBase = { testInfo, apiBaseURL: env.apiBaseURL };
+
+    await test.step('订单详情：确认已支付并解析 orderId', async () => {
+      const { body } = await loggedGet(mobileApi, {
+        ...logBase,
+        logName: '请求日志-约课退款-订单详情.json',
+        assertions: ['业务 code 应为成功码', '订单应已支付'],
+      }, Endpoints.user.orderDetail(fixtureOrderItemId));
+      expect(body.code, body.msg).toBe(SUCCESS_CODE);
+      const order = asArray(
+        (body.data as { originalOrder?: unknown } | null)?.originalOrder ?? body.data,
+      )[0];
+      expect(order, '订单详情应返回主订单').toBeTruthy();
+      expect(pickNumber(order, ['tradeResult', 'trade_result']), '预约课订单应已支付').toBe(1);
+      orderId = orderId ?? pickNumber(order, ['orderId', 'order_id', 'id']);
+      expect(orderId, '退款前应拿到 orderId').toBeTruthy();
+    });
+
+    /**
+     * 预约课退款必须先调 booking-preview，再按预览字段组 POST /refund：
+     *   orderId / refundAmount(=refundableAmount) / refundChannel / repoAuth
+     *   + bookingRefund.{ orderItemId, refundHours(=maxRefundHours), mode }
+     * 关闭课程（repoAuth=0）要求 refundHours === maxRefundHours，且无已约未开课或 mode=0。
+     */
+    await test.step('预约课退款预览 → 商家退款（关闭课程·线上）', async () => {
+      const previewRes = await loggedGet(api, {
+        ...logBase,
+        logName: '请求日志-约课退款-预览.json',
+        assertions: [
+          '业务 code 应为成功码',
+          '预览应返回 orderId/orderItemId/maxRefundHours/refundableAmount',
+        ],
+      }, Endpoints.shopAdmin.refundBookingPreview(env.shopId!), {
+        query: { orderId: orderId! },
+      });
+      expect(previewRes.body.code, `预约课退款预览失败：${previewRes.body.msg}`).toBe(SUCCESS_CODE);
+
+      const preview = parseBookingRefundPreview(previewRes.body.data);
+      expect(preview, '退款预览字段应完整可解析').toBeTruthy();
+      expect(preview!.orderId, '预览 orderId 应与订单一致').toBe(orderId);
+      expect(preview!.orderItemId, '预览 orderItemId 应有效').toBeGreaterThan(0);
+      expect(preview!.orderItemId, '预览 orderItemId 应与下单 orderItemId 一致').toBe(
+        fixtureOrderItemId,
+      );
+      expect(preview!.maxRefundHours, '关闭课程要求可退课时 > 0').toBeGreaterThan(0);
+      expect(preview!.maxRefundHours, '可退课时不应超过总课时').toBeLessThanOrEqual(
+        preview!.totalHours,
+      );
+      expect(preview!.refundableAmount, '免费预约课可退金额应为 0').toBe(0);
+
+      const payload = buildAppointmentCloseOnlineRefundPayload(preview!);
+      expect(payload.orderId, '退款 orderId').toBe(preview!.orderId);
+      expect(payload.refundAmount, '退款金额取预览 refundableAmount').toBe(
+        preview!.refundableAmount,
+      );
+      expect(payload.refundChannel, '退款方式应为线上').toBe(REFUND_CHANNEL_ONLINE);
+      expect(payload.repoAuth, '课程权限应为关闭').toBe(REPO_AUTH_CLOSE);
+      expect(payload.bookingRefund, '预约课必须带 bookingRefund').toBeTruthy();
+      expect(payload.bookingRefund!.orderItemId, 'bookingRefund.orderItemId 取预览').toBe(
+        preview!.orderItemId,
+      );
+      expect(payload.bookingRefund!.refundHours, '关闭课程须退全部可退课时').toBe(
+        preview!.maxRefundHours,
+      );
+      expect(payload.bookingRefund!.mode, '关闭课程用取消预约一并退款').toBe(
+        BOOKING_REFUND_MODE_CANCEL,
+      );
+
+      const { body } = await loggedPost(api, {
+        ...logBase,
+        logName: '请求日志-约课退款-商家退款.json',
+        assertions: [
+          '商家退款业务 code 应为成功码',
+          'payload 含 bookingRefund.orderItemId/refundHours/mode',
+          'refundChannel=0 线上 / repoAuth=0 关闭 / refundAmount=0',
+        ],
+      }, Endpoints.shopAdmin.refundCreate(env.shopId!), payload);
+      expect(body.code, `预约课商家退款失败：${body.msg}`).toBe(SUCCESS_CODE);
     });
   });
 

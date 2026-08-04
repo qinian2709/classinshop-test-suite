@@ -1,5 +1,5 @@
 import { test as base, expect } from '@playwright/test';
-import { env, accounts, hasApiCredential, hasMobileCredential } from '../../config/index.js';
+import { env, accounts, hasApiCredential, hasMobileCredential, API_MAX_RESPONSE_MS } from '../../config/index.js';
 import { resolveAuthTokens } from '../auth/login.js';
 import { DataRegistry } from '../data/cleanup.js';
 import {
@@ -113,10 +113,14 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
   },
 
   anonApi: async ({}, use) => {
-    const helper = new ApiHelper(env.apiBaseURL, {
-      ...browserHeaders(),
-      ...shopHeaders(),
-    });
+    const helper = new ApiHelper(
+      env.apiBaseURL,
+      {
+        ...browserHeaders(),
+        ...shopHeaders(),
+      },
+      { maxResponseMs: API_MAX_RESPONSE_MS },
+    );
     await use(helper);
   },
 
@@ -124,11 +128,15 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     if (!hasApiCredential() && !workerToken) {
       test.skip(true, '未配置商家/教师端鉴权凭据（TEST_TOKEN、TEST_PHONE_NUMBER 或签名），跳过需登录用例');
     }
-    const helper = new ApiHelper(env.apiBaseURL, {
-      ...browserHeaders(),
-      ...authHeader(workerToken),
-      ...shopHeaders(),
-    });
+    const helper = new ApiHelper(
+      env.apiBaseURL,
+      {
+        ...browserHeaders(),
+        ...authHeader(workerToken),
+        ...shopHeaders(),
+      },
+      { maxResponseMs: API_MAX_RESPONSE_MS },
+    );
     await use(helper);
   },
 
@@ -136,11 +144,15 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
     if (!hasMobileCredential() && !workerMobileToken) {
       test.skip(true, '未配置用户/C 端鉴权凭据（MOBILE_TEST_TOKEN 或 MOBILE_TEST_PHONE_NUMBER），跳过 C 端用例');
     }
-    const helper = new ApiHelper(env.apiBaseURL, {
-      ...browserHeaders(),
-      ...authHeader(workerMobileToken),
-      ...shopHeaders(),
-    });
+    const helper = new ApiHelper(
+      env.apiBaseURL,
+      {
+        ...browserHeaders(),
+        ...authHeader(workerMobileToken),
+        ...shopHeaders(),
+      },
+      { maxResponseMs: API_MAX_RESPONSE_MS },
+    );
     await use(helper);
   },
 

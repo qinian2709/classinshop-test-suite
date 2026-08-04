@@ -42,3 +42,21 @@ export type {
   AvailableCoupon,
   AppointmentOrderItem,
 } from './discovery.js';
+export {
+  REFUND_CHANNEL_ONLINE,
+  REFUND_CHANNEL_OFFLINE,
+  REPO_AUTH_CLOSE,
+  REPO_AUTH_KEEP,
+  BOOKING_REFUND_MODE_CANCEL,
+  BOOKING_REFUND_MODE_KEEP,
+  pickOrderRefundAmount,
+  parseBookingRefundPreview,
+  buildMerchantCloseOnlineRefundPayload,
+  buildAppointmentCloseOnlineRefundPayload,
+} from './refund.js';
+export type {
+  BookingRefundPreview,
+  BookingRefundOptionPayload,
+  MerchantRefundPayload,
+  BuildMerchantCloseOnlineRefundInput,
+} from './refund.js';
