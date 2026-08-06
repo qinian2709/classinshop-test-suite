@@ -40,8 +40,10 @@ function main() {
     return;
   }
 
-  let content = readFileSync(reporterPath, 'utf-8');
-  let patched = false;
+  const raw = readFileSync(reporterPath, 'utf-8');
+  // 上游 npm 包为 CRLF；统一成 LF，后续 needle 才能稳定命中（CI 失败根因）
+  let content = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  let patched = raw !== content;
 
   // 1. Add environment / metrics keys — no undeclared `_n` / `_q`
   if (!content.includes('dashboardWidgets.environment')) {
@@ -285,6 +287,57 @@ function main() {
     }
   }
 
+  // 5. Details 的 Status/Search 同步过滤 Test Suites（须在 6c 之前：6c 会删掉 updateCharts 调用）
+  if (!content.includes('function filterSuitesPanel(')) {
+    const needle =
+      "                if (typeof updateChartsFromFilteredRows === 'function') {\n" +
+      '                    updateChartsFromFilteredRows(filteredRows);\n' +
+      '                }\n' +
+      '            }';
+    const replacement =
+      "                if (typeof updateChartsFromFilteredRows === 'function') {\n" +
+      '                    updateChartsFromFilteredRows(filteredRows);\n' +
+      '                }\n' +
+      '                // patched: sync Test Suites panel with Details status/search filters\n' +
+      "                if (typeof filterSuitesPanel === 'function') {\n" +
+      '                    filterSuitesPanel(searchValue, statusValue);\n' +
+      '                }\n' +
+      '            }\n' +
+      '\n' +
+      '            function filterSuitesPanel(searchValue, statusValue) {\n' +
+      "                const suiteCards = document.querySelectorAll('#suites .suite-card');\n" +
+      '                suiteCards.forEach(card => {\n' +
+      "                    const items = card.querySelectorAll('.suite-test-item');\n" +
+      '                    let visibleCount = 0;\n' +
+      '                    items.forEach(item => {\n' +
+      '                        const statusClass = Array.from(item.classList).find(c => c.indexOf(\'status-\') === 0) || \'\';\n' +
+      "                        const status = statusClass.replace('status-', '');\n" +
+      "                        const nameEl = item.querySelector('.test-name');\n" +
+      "                        const name = (nameEl && nameEl.textContent ? nameEl.textContent : '').toLowerCase();\n" +
+      '                        const matchesStatus = !statusValue || status.indexOf(statusValue) !== -1;\n' +
+      '                        const matchesSearch = !searchValue || name.indexOf(searchValue) !== -1;\n' +
+      '                        const show = matchesStatus && matchesSearch;\n' +
+      "                        item.style.display = show ? '' : 'none';\n" +
+      '                        if (show) visibleCount++;\n' +
+      '                    });\n' +
+      '                    const filtering = !!(statusValue || searchValue);\n' +
+      "                    card.style.display = !filtering || visibleCount > 0 ? '' : 'none';\n" +
+      '                    if (filtering && visibleCount > 0) {\n' +
+      "                        const tests = card.querySelector('.suite-tests');\n" +
+      "                        if (tests) tests.style.display = 'block';\n" +
+      "                        const header = card.querySelector('.suite-header');\n" +
+      "                        if (header) header.classList.add('expanded');\n" +
+      '                    }\n' +
+      '                });\n' +
+      '            }';
+    if (!content.includes(needle)) {
+      console.warn('⚠️  patch #5 needle not found, skipping');
+    } else {
+      content = content.replace(needle, replacement);
+      patched = true;
+    }
+  }
+
   // 6c. 筛选不改 Test Results 饼图（仅 Suites/Details 跟着变）
   if (
     content.includes('updateChartsFromFilteredRows(filteredRows)') &&
@@ -489,57 +542,6 @@ function main() {
       '            });';
     if (content.includes(statusListenerNeedle)) {
       content = content.replace(statusListenerNeedle, statusListenerReplacement);
-      patched = true;
-    }
-  }
-
-  // 5. Details 的 Status/Search 同步过滤 Test Suites（上游 applyFilters 只改 details 表格）
-  if (!content.includes('function filterSuitesPanel(')) {
-    const needle =
-      "                if (typeof updateChartsFromFilteredRows === 'function') {\n" +
-      '                    updateChartsFromFilteredRows(filteredRows);\n' +
-      '                }\n' +
-      '            }';
-    const replacement =
-      "                if (typeof updateChartsFromFilteredRows === 'function') {\n" +
-      '                    updateChartsFromFilteredRows(filteredRows);\n' +
-      '                }\n' +
-      '                // patched: sync Test Suites panel with Details status/search filters\n' +
-      "                if (typeof filterSuitesPanel === 'function') {\n" +
-      '                    filterSuitesPanel(searchValue, statusValue);\n' +
-      '                }\n' +
-      '            }\n' +
-      '\n' +
-      '            function filterSuitesPanel(searchValue, statusValue) {\n' +
-      "                const suiteCards = document.querySelectorAll('#suites .suite-card');\n" +
-      '                suiteCards.forEach(card => {\n' +
-      "                    const items = card.querySelectorAll('.suite-test-item');\n" +
-      '                    let visibleCount = 0;\n' +
-      '                    items.forEach(item => {\n' +
-      '                        const statusClass = Array.from(item.classList).find(c => c.indexOf(\'status-\') === 0) || \'\';\n' +
-      "                        const status = statusClass.replace('status-', '');\n" +
-      "                        const nameEl = item.querySelector('.test-name');\n" +
-      "                        const name = (nameEl && nameEl.textContent ? nameEl.textContent : '').toLowerCase();\n" +
-      '                        const matchesStatus = !statusValue || status.indexOf(statusValue) !== -1;\n' +
-      '                        const matchesSearch = !searchValue || name.indexOf(searchValue) !== -1;\n' +
-      '                        const show = matchesStatus && matchesSearch;\n' +
-      "                        item.style.display = show ? '' : 'none';\n" +
-      '                        if (show) visibleCount++;\n' +
-      '                    });\n' +
-      '                    const filtering = !!(statusValue || searchValue);\n' +
-      "                    card.style.display = !filtering || visibleCount > 0 ? '' : 'none';\n" +
-      '                    if (filtering && visibleCount > 0) {\n' +
-      "                        const tests = card.querySelector('.suite-tests');\n" +
-      "                        if (tests) tests.style.display = 'block';\n" +
-      "                        const header = card.querySelector('.suite-header');\n" +
-      "                        if (header) header.classList.add('expanded');\n" +
-      '                    }\n' +
-      '                });\n' +
-      '            }';
-    if (!content.includes(needle)) {
-      console.warn('⚠️  patch #5 needle not found, skipping');
-    } else {
-      content = content.replace(needle, replacement);
       patched = true;
     }
   }
