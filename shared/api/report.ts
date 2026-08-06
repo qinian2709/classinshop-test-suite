@@ -18,6 +18,8 @@ export interface ApiCallLogOptions {
   /** 端到端耗时（ms），从发请求到拿到响应体 */
   durationMs?: number;
   assertions?: string[];
+  /** 本条请求相关断言是否失败（如耗时超限）；供报告在 API Requests 上行内标红 */
+  assertionFailed?: boolean;
   name?: string;
 }
 
@@ -62,6 +64,7 @@ export async function attachApiCallLog(options: ApiCallLogOptions): Promise<void
         },
         ...(typeof options.durationMs === 'number' ? { durationMs: options.durationMs } : {}),
         assertions: options.assertions ?? [],
+        ...(options.assertionFailed ? { assertionFailed: true } : {}),
       },
       null,
       2,

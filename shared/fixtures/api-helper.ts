@@ -1,3 +1,4 @@
+import { test } from '@playwright/test';
 import { assertApiResponseDuration, resolveMaxApiResponseMs } from '../http/duration.js';
 import type { ApiResponse } from '../http/types.js';
 import { SUCCESS_CODE } from '../http/types.js';
@@ -12,6 +13,11 @@ export interface CallOptions {
    * - 传 0：跳过本次耗时断言
    */
   maxDurationMs?: number;
+  /**
+   * 是否包一层 Playwright `test.step`（默认 true）。
+   * `logged*` 外层已建 step 时传 false，避免同名嵌套。
+   */
+  step?: boolean;
 }
 
 export type HttpMethod = 'get' | 'post' | 'put' | 'delete';
@@ -133,24 +139,40 @@ export class ApiHelper {
     return { res, requestHeaders };
   }
 
+  private stepTitle(method: HttpMethod | string, path: string): string {
+    return `${String(method).toUpperCase()} ${path}`;
+  }
+
+  private async withStep<T>(
+    method: HttpMethod | string,
+    path: string,
+    opts: CallOptions,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    if (opts.step === false) return run();
+    return test.step(this.stepTitle(method, path), run);
+  }
+
   /** 原始响应（适配器形式），用于只关心 HTTP 状态/原文的断言。 */
   async raw(method: HttpMethod, path: string, opts: CallOptions = {}): Promise<RawResponse> {
-    const maxDurationMs = this.resolveMaxDurationMs(opts);
-    const started = Date.now();
-    const { res, requestHeaders } = await this.send(method, path, opts);
-    const text = await res.text();
-    const durationMs = Date.now() - started;
-    this.assertDuration(method, path, durationMs, maxDurationMs);
-    const responseHeaders = headersToRecord(res.headers);
+    return this.withStep(method, path, opts, async () => {
+      const maxDurationMs = this.resolveMaxDurationMs(opts);
+      const started = Date.now();
+      const { res, requestHeaders } = await this.send(method, path, opts);
+      const text = await res.text();
+      const durationMs = Date.now() - started;
+      this.assertDuration(method, path, durationMs, maxDurationMs);
+      const responseHeaders = headersToRecord(res.headers);
 
-    return {
-      status: () => res.status,
-      json: async <T = any>() => JSON.parse(text) as T,
-      text: async () => text,
-      durationMs: () => durationMs,
-      requestHeaders: () => requestHeaders,
-      responseHeaders: () => responseHeaders,
-    };
+      return {
+        status: () => res.status,
+        json: async <T = any>() => JSON.parse(text) as T,
+        text: async () => text,
+        durationMs: () => durationMs,
+        requestHeaders: () => requestHeaders,
+        responseHeaders: () => responseHeaders,
+      };
+    });
   }
 
   async call<T = unknown>(
@@ -158,24 +180,26 @@ export class ApiHelper {
     path: string,
     opts: CallOptions = {},
   ): Promise<ApiCallResult<T>> {
-    const maxDurationMs = this.resolveMaxDurationMs(opts);
-    const started = Date.now();
-    const { res, requestHeaders } = await this.send(method, path, opts);
-    const status = res.status;
-    const text = await res.text();
-    const durationMs = Date.now() - started;
-    this.assertDuration(method, path, durationMs, maxDurationMs);
-    const responseHeaders = headersToRecord(res.headers);
+    return this.withStep(method, path, opts, async () => {
+      const maxDurationMs = this.resolveMaxDurationMs(opts);
+      const started = Date.now();
+      const { res, requestHeaders } = await this.send(method, path, opts);
+      const status = res.status;
+      const text = await res.text();
+      const durationMs = Date.now() - started;
+      this.assertDuration(method, path, durationMs, maxDurationMs);
+      const responseHeaders = headersToRecord(res.headers);
 
-    let body: ApiResponse<T>;
-    try {
-      body = JSON.parse(text) as ApiResponse<T>;
-    } catch {
-      throw new Error(
-        `非 JSON 响应（${method.toUpperCase()} ${path} -> HTTP ${status}）：${text.slice(0, 200)}`,
-      );
-    }
-    return { status, body, durationMs, requestHeaders, responseHeaders };
+      let body: ApiResponse<T>;
+      try {
+        body = JSON.parse(text) as ApiResponse<T>;
+      } catch {
+        throw new Error(
+          `非 JSON 响应（${method.toUpperCase()} ${path} -> HTTP ${status}）：${text.slice(0, 200)}`,
+        );
+      }
+      return { status, body, durationMs, requestHeaders, responseHeaders };
+    });
   }
 
   get<T = unknown>(path: string, opts: CallOptions = {}) {
