@@ -21,6 +21,10 @@ export interface ApiCallResult<T = unknown> {
   body: ApiResponse<T>;
   /** 端到端耗时（ms）：发请求 → 读完响应体 */
   durationMs: number;
+  /** 实际发出的请求头（含默认鉴权头） */
+  requestHeaders: Record<string, string>;
+  /** 响应头 */
+  responseHeaders: Record<string, string>;
 }
 
 /** raw() 的返回适配器，兼容此前基于 Playwright APIResponse 的用法（status() / json() / text()）。 */
@@ -31,6 +35,16 @@ export interface RawResponse {
   text: () => Promise<string>;
   /** 端到端耗时（ms） */
   durationMs: () => number;
+  requestHeaders: () => Record<string, string>;
+  responseHeaders: () => Record<string, string>;
+}
+
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
 }
 
 export interface ApiHelperInitOptions {
@@ -104,29 +118,38 @@ export class ApiHelper {
     );
   }
 
-  private async send(method: HttpMethod, path: string, opts: CallOptions): Promise<Response> {
+  private async send(
+    method: HttpMethod,
+    path: string,
+    opts: CallOptions,
+  ): Promise<{ res: Response; requestHeaders: Record<string, string> }> {
     const hasBody = opts.data !== undefined;
-    return fetch(this.buildUrl(path, opts.query), {
+    const requestHeaders = this.mergeHeaders(opts.headers, hasBody);
+    const res = await fetch(this.buildUrl(path, opts.query), {
       method: method.toUpperCase(),
-      headers: this.mergeHeaders(opts.headers, hasBody),
+      headers: requestHeaders,
       body: hasBody ? JSON.stringify(opts.data) : undefined,
     });
+    return { res, requestHeaders };
   }
 
   /** 原始响应（适配器形式），用于只关心 HTTP 状态/原文的断言。 */
   async raw(method: HttpMethod, path: string, opts: CallOptions = {}): Promise<RawResponse> {
     const maxDurationMs = this.resolveMaxDurationMs(opts);
     const started = Date.now();
-    const res = await this.send(method, path, opts);
+    const { res, requestHeaders } = await this.send(method, path, opts);
     const text = await res.text();
     const durationMs = Date.now() - started;
     this.assertDuration(method, path, durationMs, maxDurationMs);
+    const responseHeaders = headersToRecord(res.headers);
 
     return {
       status: () => res.status,
       json: async <T = any>() => JSON.parse(text) as T,
       text: async () => text,
       durationMs: () => durationMs,
+      requestHeaders: () => requestHeaders,
+      responseHeaders: () => responseHeaders,
     };
   }
 
@@ -137,11 +160,12 @@ export class ApiHelper {
   ): Promise<ApiCallResult<T>> {
     const maxDurationMs = this.resolveMaxDurationMs(opts);
     const started = Date.now();
-    const res = await this.send(method, path, opts);
+    const { res, requestHeaders } = await this.send(method, path, opts);
     const status = res.status;
     const text = await res.text();
     const durationMs = Date.now() - started;
     this.assertDuration(method, path, durationMs, maxDurationMs);
+    const responseHeaders = headersToRecord(res.headers);
 
     let body: ApiResponse<T>;
     try {
@@ -151,7 +175,7 @@ export class ApiHelper {
         `非 JSON 响应（${method.toUpperCase()} ${path} -> HTTP ${status}）：${text.slice(0, 200)}`,
       );
     }
-    return { status, body, durationMs };
+    return { status, body, durationMs, requestHeaders, responseHeaders };
   }
 
   get<T = unknown>(path: string, opts: CallOptions = {}) {

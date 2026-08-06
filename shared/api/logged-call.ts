@@ -47,6 +47,8 @@ async function attachLog(
   status: number,
   body: unknown,
   durationMs: number,
+  requestHeaders: Record<string, string> = {},
+  responseHeaders: Record<string, string> = {},
 ): Promise<void> {
   const maxDurationMs = resolveMaxDurationMs(log);
   const durationAssertion =
@@ -56,8 +58,8 @@ async function attachLog(
   await attachApiCallLog({
     testInfo: log.testInfo,
     name: log.logName,
-    request: { method, url, headers: {}, body: requestBody ?? null },
-    response: { status, headers: {}, body },
+    request: { method, url, headers: requestHeaders, body: requestBody ?? null },
+    response: { status, headers: responseHeaders, body },
     durationMs,
     assertions: [...(log.assertions ?? []), ...durationAssertion],
   });
@@ -82,7 +84,17 @@ export async function loggedGet<T = unknown>(
 ): Promise<{ status: number; body: ApiResponse<T>; durationMs: number }> {
   const url = buildApiRequestUrl(log.apiBaseURL, path, options.query);
   const result = await api.get<T>(path, callOptsFromLog(log, options));
-  await attachLog(log, 'GET', url, null, result.status, result.body, result.durationMs);
+  await attachLog(
+    log,
+    'GET',
+    url,
+    null,
+    result.status,
+    result.body,
+    result.durationMs,
+    result.requestHeaders,
+    result.responseHeaders,
+  );
   return result;
 }
 
@@ -96,7 +108,17 @@ export async function loggedPost<T = unknown>(
 ): Promise<{ status: number; body: ApiResponse<T>; durationMs: number }> {
   const url = buildApiRequestUrl(log.apiBaseURL, path, options.query);
   const result = await api.post<T>(path, data, callOptsFromLog(log, options));
-  await attachLog(log, 'POST', url, data ?? null, result.status, result.body, result.durationMs);
+  await attachLog(
+    log,
+    'POST',
+    url,
+    data ?? null,
+    result.status,
+    result.body,
+    result.durationMs,
+    result.requestHeaders,
+    result.responseHeaders,
+  );
   return result;
 }
 
@@ -121,6 +143,16 @@ export async function loggedRaw(
   } catch {
     body = null;
   }
-  await attachLog(log, method.toUpperCase(), url, options.data ?? null, status, body, durationMs);
+  await attachLog(
+    log,
+    method.toUpperCase(),
+    url,
+    options.data ?? null,
+    status,
+    body,
+    durationMs,
+    res.requestHeaders(),
+    res.responseHeaders(),
+  );
   return { status, body, durationMs };
 }
