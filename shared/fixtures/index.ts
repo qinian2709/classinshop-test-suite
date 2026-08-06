@@ -198,7 +198,11 @@ export const test = base.extend<ApiFixtures, ApiWorkerFixtures>({
         coupon = { couponId: body.data.id, name: `flow测试券-${now}` };
         const couponId = coupon.couponId;
         data.register(`停用 flow 测试券 ${couponId}`, async () => {
-          await api.post(Endpoints.shopAdmin.couponStatus(env.shopId), { id: couponId, status: 1 });
+          await api.post(
+            Endpoints.shopAdmin.couponStatus(env.shopId),
+            { id: couponId, status: 1 },
+            { maxDurationMs: 0 },
+          );
         });
       }
     }

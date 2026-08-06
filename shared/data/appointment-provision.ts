@@ -14,6 +14,7 @@ import {
   GOODS_TYPE_APPOINTMENT,
 } from './goods-provision.js';
 import { cleanupRefundAppointmentOrder } from './refund.js';
+import { INFRA_API_OPTS } from './infra.js';
 
 export interface TeacherSlotSetup {
   teacherId: number;
@@ -150,9 +151,10 @@ export async function provisionTeacherAvailableSlots(
     replace: true,
   };
   const path = Endpoints.shopAdmin.appointmentTeacherSlots(shopId);
+  // 用例传入 log → logged* 仍走正文 SLA；无 log 的基建调用跳过耗时
   const { body } = options?.log
     ? await loggedPost(api, options.log, path, payload)
-    : await api.post(path, payload);
+    : await api.post(path, payload, INFRA_API_OPTS);
   if (body.code !== SUCCESS_CODE) {
     throw new Error(`设置老师可约时段失败: code=${body.code} msg=${body.msg ?? ''}`);
   }
@@ -197,6 +199,7 @@ export async function provisionStudentAppointmentOrderItem(
 
   const { body: goodsDetail } = await merchantApi.get<{ goodsType: number }>(
     Endpoints.shopAdmin.goodsDetail(options.shopId, goods.goodsId),
+    INFRA_API_OPTS,
   );
   if (goodsDetail.code !== SUCCESS_CODE || goodsDetail.data?.goodsType !== GOODS_TYPE_APPOINTMENT) {
     return null;
@@ -205,6 +208,7 @@ export async function provisionStudentAppointmentOrderItem(
   const { body } = await mobileApi.post(
     Endpoints.goods.orderCreate,
     buildCreateOrderPayload({ goodsId: goods.goodsId, skuId: goods.skuId }),
+    INFRA_API_OPTS,
   );
   if (body.code !== SUCCESS_CODE) return null;
 

@@ -6,6 +6,7 @@
 import fs from 'node:fs/promises';
 import type { ApiHelper } from '../fixtures/api-helper.js';
 import { Endpoints } from '../api/endpoints.js';
+import { INFRA_API_OPTS, withInfraApiOpts } from './infra.js';
 import { SUCCESS_CODE } from '../http/types.js';
 import type { DataRegistry } from './cleanup.js';
 import type { SampleGoods } from './discovery.js';
@@ -177,7 +178,7 @@ function timeLabel(): string {
 async function uploadGoodsCover(api: ApiHelper): Promise<string> {
   const { body: sign } = await api.get<{ uploadUrl: string; objectKey: string; accessUrl: string }>(
     Endpoints.system.cosSign,
-    { query: { fileName: 'goods-cover.png', dir: 'thumbnails' } },
+    withInfraApiOpts({ query: { fileName: 'goods-cover.png', dir: 'thumbnails' } }),
   );
   if (sign.code !== SUCCESS_CODE || !sign.data?.uploadUrl || !sign.data.objectKey) {
     throw new Error(`COS 上传签名失败：code=${sign.code} msg=${sign.msg}`);
@@ -199,9 +200,9 @@ async function resolveClassInClass(
   api: ApiHelper,
   shopId: string | number,
 ): Promise<ClassInClass | null> {
-  const { body } = await api.get<ClassInClass[]>(Endpoints.classin.classList(0), {
+  const { body } = await api.get<ClassInClass[]>(Endpoints.classin.classList(0), withInfraApiOpts({
     query: { orgid: shopId },
-  });
+  }));
   if (body.code !== SUCCESS_CODE || !Array.isArray(body.data) || body.data.length === 0) {
     return null;
   }
@@ -214,6 +215,7 @@ async function resolveAppointmentTeacher(
 ): Promise<{ id: number } | null> {
   const { body } = await api.get<AppointmentTeacherList>(
     Endpoints.shopAdmin.appointmentTeachers(shopId),
+    INFRA_API_OPTS,
   );
   if (body.code !== SUCCESS_CODE || !Array.isArray(body.data?.list) || body.data.list.length === 0) {
     return null;
@@ -249,11 +251,12 @@ async function publishAndValidate(
   const { body: published } = await api.post(Endpoints.shopAdmin.goodsStatus(shopId), {
     goodsId,
     status: 1,
-  });
+  }, INFRA_API_OPTS);
   if (published.code !== SUCCESS_CODE) return null;
 
   const { body: finalDetail } = await api.get<GoodsDetail>(
     Endpoints.shopAdmin.goodsDetail(shopId, goodsId),
+    INFRA_API_OPTS,
   );
   if (finalDetail.code !== SUCCESS_CODE || finalDetail.data?.status !== 1) return null;
   if (finalDetail.data.goodsType !== expectedGoodsType) return null;
@@ -299,17 +302,17 @@ export async function provisionPublishedFixedGoods(
     products: [baseProduct(priceFields)],
   };
 
-  const { body: created } = await api.post<IdResult>(Endpoints.shopAdmin.goodsCreate(shopId), createPayload);
+  const { body: created } = await api.post<IdResult>(Endpoints.shopAdmin.goodsCreate(shopId), createPayload, INFRA_API_OPTS);
   if (created.code !== SUCCESS_CODE || !created.data?.id) return null;
   const goodsId = created.data.id;
 
   if (!keep && data) {
     data.register(`删除 flow 固定课 ${goodsId}`, async () => {
-      await api.post(Endpoints.shopAdmin.goodsDelete(shopId), { goodsId });
+      await api.post(Endpoints.shopAdmin.goodsDelete(shopId), { goodsId }, INFRA_API_OPTS);
     });
   }
 
-  const { body: draftDetail } = await api.get<GoodsDetail>(Endpoints.shopAdmin.goodsDetail(shopId, goodsId));
+  const { body: draftDetail } = await api.get<GoodsDetail>(Endpoints.shopAdmin.goodsDetail(shopId, goodsId), INFRA_API_OPTS);
   if (draftDetail.code !== SUCCESS_CODE || !draftDetail.data?.products?.[0]?.id) return null;
   const draftProduct = draftDetail.data.products[0]!;
 
@@ -336,7 +339,7 @@ export async function provisionPublishedFixedGoods(
     ],
   });
 
-  const { body: updated } = await api.post(Endpoints.shopAdmin.goodsUpdate(shopId), updatePayload);
+  const { body: updated } = await api.post(Endpoints.shopAdmin.goodsUpdate(shopId), updatePayload, INFRA_API_OPTS);
   if (updated.code !== SUCCESS_CODE) return null;
 
   const finalDetail = await publishAndValidate(api, shopId, goodsId, GOODS_TYPE_FIXED);
@@ -378,17 +381,17 @@ export async function provisionPublishedAppointmentGoods(
     products: [baseProduct({ hoursCount: 10, teacherIds: [teacher.id], ...priceFields })],
   };
 
-  const { body: created } = await api.post<IdResult>(Endpoints.shopAdmin.goodsCreate(shopId), createPayload);
+  const { body: created } = await api.post<IdResult>(Endpoints.shopAdmin.goodsCreate(shopId), createPayload, INFRA_API_OPTS);
   if (created.code !== SUCCESS_CODE || !created.data?.id) return null;
   const goodsId = created.data.id;
 
   if (!keep && data) {
     data.register(`删除 flow 预约课 ${goodsId}`, async () => {
-      await api.post(Endpoints.shopAdmin.goodsDelete(shopId), { goodsId });
+      await api.post(Endpoints.shopAdmin.goodsDelete(shopId), { goodsId }, INFRA_API_OPTS);
     });
   }
 
-  const { body: draftDetail } = await api.get<GoodsDetail>(Endpoints.shopAdmin.goodsDetail(shopId, goodsId));
+  const { body: draftDetail } = await api.get<GoodsDetail>(Endpoints.shopAdmin.goodsDetail(shopId, goodsId), INFRA_API_OPTS);
   if (draftDetail.code !== SUCCESS_CODE || !draftDetail.data?.products?.[0]?.id) return null;
   const draftProduct = draftDetail.data.products[0]!;
 
@@ -409,7 +412,7 @@ export async function provisionPublishedAppointmentGoods(
     ],
   });
 
-  const { body: updated } = await api.post(Endpoints.shopAdmin.goodsUpdate(shopId), updatePayload);
+  const { body: updated } = await api.post(Endpoints.shopAdmin.goodsUpdate(shopId), updatePayload, INFRA_API_OPTS);
   if (updated.code !== SUCCESS_CODE) return null;
 
   const finalDetail = await publishAndValidate(api, shopId, goodsId, GOODS_TYPE_APPOINTMENT);

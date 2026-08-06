@@ -38,7 +38,7 @@ test.describe('地址链路（依赖创建返回的 addressId）', () => {
       addressId = pickNumber(body.data, ['id', 'addressId', 'address_id']);
       expect(addressId, '创建地址应返回 id').toBeTruthy();
       data.register(`address ${addressId}`, async () => {
-        await api.post(Endpoints.user.addressDelete, { id: addressId });
+        await api.post(Endpoints.user.addressDelete, { id: addressId }, { maxDurationMs: 0 });
       });
     });
 
