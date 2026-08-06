@@ -987,10 +987,9 @@ function main() {
       '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}" style="padding-left: ${level * 20}px">\n';
     const stepItemOpenReplacement =
       '            const isAssertLeaf = !kids;\n' +
-      '            const hidePassAssert = isAssertLeaf && step.status === \'passed\';\n' +
       '            return `\n' +
-      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}${hidePassAssert ? \' step-assert-pass\' : \'\'}" style="padding-left: ${level * 20}px${hidePassAssert ? \'; display: none\' : \'\'}">\n';
-    if (content.includes(stepItemOpenNeedle) && !content.includes('step-assert-pass')) {
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}" style="padding-left: ${level * 20}px">\n';
+    if (content.includes(stepItemOpenNeedle) && !content.includes('step-assert-leaf')) {
       content = content.replace(stepItemOpenNeedle, stepItemOpenReplacement);
       patched = true;
     }
@@ -1092,6 +1091,25 @@ function main() {
         content = content.replace(cssAnchor, cssExtra);
         patched = true;
       }
+    }
+  }
+
+  // 14. 修复：通过断言叶子不再 display:none（否则父节点展开后内部空白）
+  if (content.includes('step-assert-pass') && content.includes('hidePassAssert')) {
+    const hidePassNeedle =
+      '            const isAssertLeaf = !kids;\n' +
+      '            const hidePassAssert = isAssertLeaf && step.status === \'passed\';\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}${hidePassAssert ? \' step-assert-pass\' : \'\'}" style="padding-left: ${level * 20}px${hidePassAssert ? \'; display: none\' : \'\'}">\n';
+    const hidePassReplacement =
+      '            const isAssertLeaf = !kids;\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}" style="padding-left: ${level * 20}px">\n';
+    if (content.includes(hidePassNeedle)) {
+      content = content.replace(hidePassNeedle, hidePassReplacement);
+      patched = true;
+    } else {
+      console.warn('⚠️  patch #14 hidePassAssert needle not found, skipping');
     }
   }
 
