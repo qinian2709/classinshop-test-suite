@@ -13,6 +13,7 @@ import {
   provisionPublishedAppointmentGoods,
   GOODS_TYPE_APPOINTMENT,
 } from './goods-provision.js';
+import { cleanupRefundAppointmentOrder } from './refund.js';
 
 export interface TeacherSlotSetup {
   teacherId: number;
@@ -41,10 +42,69 @@ export function futureLocalDate(daysAhead: number): string {
   return formatLocalDate(d);
 }
 
+/** 生成稀疏可约起点，降低与历史 pending 预约撞车概率（后端仅允许 15/30/60）。 */
+export function sparseTeacherSlotStarts(count = 6): string[] {
+  const stepMin = 60;
+  // 以当前分钟偏移挑起点，避免多轮自动化总落在 09/11/13…
+  const seed = Math.floor(Date.now() / 60_000) % 8;
+  const starts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const totalMin = (8 + seed) * 60 + i * stepMin;
+    if (totalMin + stepMin > 22 * 60) break;
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    starts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  }
+  return starts.length > 0 ? starts : ['10:00', '12:00', '14:00', '16:00', '18:00'];
+}
+
 function localDateTimeUnix(dateStr: string, hhmm: string): number {
   const [h = 0, m = 0] = hhmm.split(':').map(Number);
   const [y = 1970, mo = 1, day = 1] = dateStr.split('-').map(Number);
-  return Math.floor(new Date(y, mo - 1, day, h, m, 0).getTime() / 1000);
+  // 与后端 appointmentTZ（CST +08）对齐，避免本机非东八区时 startUnix 偏移
+  const utcMs = Date.UTC(y, mo - 1, day, h - 8, m, 0);
+  return Math.floor(utcMs / 1000);
+}
+
+function readNonNegInt(obj: Record<string, unknown>, keys: string[], fallback: number): number {
+  for (const k of keys) {
+    const v = obj[k];
+    const n = typeof v === 'string' ? Number(v) : v;
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) return n;
+  }
+  return fallback;
+}
+
+export interface BookableStudentSlot {
+  teacherId: number;
+  startUnix: number;
+  durationMin: number;
+  capacity: number;
+  bookedNum: number;
+}
+
+/**
+ * 从学员可约时段响应中筛「仍有空位」的候选。
+ * 后端 slots 列表会返回已约满时段（bookedNum），约课冲突校验才拒绝；测试必须先过滤。
+ */
+export function listBookableStudentSlots(
+  data: unknown,
+  fallbackTeacherId?: number,
+): BookableStudentSlot[] {
+  const slots: BookableStudentSlot[] = [];
+  for (const s of asArray(data)) {
+    const startUnix = pickNumber(s, ['startUnix', 'start_unix']);
+    const endUnix = pickNumber(s, ['endUnix', 'end_unix']);
+    const teacherId = pickNumber(s, ['teacherId', 'teacher_id']) ?? fallbackTeacherId;
+    const capacity = readNonNegInt(s, ['capacity'], 1) || 1;
+    const bookedNum = readNonNegInt(s, ['bookedNum', 'booked_num'], 0);
+    const durationMin =
+      startUnix && endUnix ? Math.round((endUnix - startUnix) / 60) : undefined;
+    if (!startUnix || !teacherId || !durationMin) continue;
+    if (bookedNum >= capacity) continue;
+    slots.push({ teacherId, startUnix, durationMin, capacity, bookedNum });
+  }
+  return slots;
 }
 
 /** 从 orderTeachers 等接口响应里取第一个老师 ID。 */
@@ -69,19 +129,23 @@ export async function provisionTeacherAvailableSlots(
   teacherId: number,
   options?: {
     date?: string;
+    dates?: string[];
     startHhmm?: string;
     startHhmms?: string[];
     durationMin?: number;
     log?: ApiLogOptions;
   },
 ): Promise<TeacherSlotSetup> {
-  const date = options?.date ?? tomorrowLocalDate();
+  const dates =
+    options?.dates && options.dates.length > 0
+      ? options.dates
+      : [options?.date ?? tomorrowLocalDate()];
   const startHhmms = options?.startHhmms ?? (options?.startHhmm ? [options.startHhmm] : ['10:00']);
   const durationMin = options?.durationMin ?? 60;
   const payload = {
     teacher_id: teacherId,
     duration_min: durationMin,
-    dates: [date],
+    dates,
     start_hhmms: startHhmms,
     replace: true,
   };
@@ -94,6 +158,7 @@ export async function provisionTeacherAvailableSlots(
   }
 
   const startHhmm = startHhmms[0]!;
+  const date = dates[0]!;
   return {
     teacherId,
     date,
@@ -146,9 +211,17 @@ export async function provisionStudentAppointmentOrderItem(
   const orderItemId = pickNumber(body.data, ['orderItemId', 'order_item_id']);
   if (!orderItemId) return null;
 
+  const orderId = pickNumber(body.data, ['orderId', 'order_id', 'id']);
+  // 每条用到本 fixture 的用例都会下一单；用例内未必退款，必须登记清理退款避免脏单堆积
+  if (orderId && options.data) {
+    options.data.register(`退款清理预约课订单 ${orderId}`, async () => {
+      await cleanupRefundAppointmentOrder(merchantApi, options.shopId, orderId);
+    });
+  }
+
   return {
     orderItemId,
-    orderId: pickNumber(body.data, ['orderId', 'order_id', 'id']),
+    orderId,
     goodsId: goods.goodsId,
     skuId: goods.skuId,
     goodsType: goods.goodsType,

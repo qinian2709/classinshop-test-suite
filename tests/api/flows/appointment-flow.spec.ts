@@ -13,6 +13,8 @@ import {
   provisionTeacherAvailableSlots,
   pickOrderTeacherId,
   futureLocalDate,
+  sparseTeacherSlotStarts,
+  listBookableStudentSlots,
   parseBookingRefundPreview,
   buildAppointmentCloseOnlineRefundPayload,
   REFUND_CHANNEL_ONLINE,
@@ -33,23 +35,8 @@ interface SlotPick {
   durationMin?: number;
 }
 
-function listAvailableSlots(data: unknown, fallbackTeacherId?: number): SlotPick[] {
-  const slots: SlotPick[] = [];
-  for (const s of asArray(data)) {
-    const startUnix = pickNumber(s, ['startUnix', 'start_unix']);
-    const endUnix = pickNumber(s, ['endUnix', 'end_unix']);
-    const teacherId = pickNumber(s, ['teacherId', 'teacher_id']) ?? fallbackTeacherId;
-    const durationMin =
-      startUnix && endUnix ? Math.round((endUnix - startUnix) / 60) : undefined;
-    if (startUnix && teacherId && durationMin) {
-      slots.push({ teacherId, startUnix, durationMin });
-    }
-  }
-  return slots;
-}
-
-function pickFirstAvailableSlot(data: unknown, fallbackTeacherId?: number): SlotPick | undefined {
-  return listAvailableSlots(data, fallbackTeacherId)[0];
+function pickFirstBookableSlot(data: unknown, fallbackTeacherId?: number): SlotPick | undefined {
+  return listBookableStudentSlots(data, fallbackTeacherId)[0];
 }
 
 function mergeSlotFromSetup(
@@ -120,7 +107,7 @@ test.describe('预约课约课链路（绑定老师）', () => {
         assertions: ['业务 code 应为成功码'],
       }, Endpoints.appointment.orderSlots(orderItemId), { query });
       expect(body.code, body.msg).toBe(SUCCESS_CODE);
-      slot = mergeSlotFromSetup(pickFirstAvailableSlot(body.data, teacherId), slotSetup!);
+      slot = mergeSlotFromSetup(pickFirstBookableSlot(body.data, teacherId), slotSetup!);
     });
 
     await test.step('约课前置校验（下游，依赖订单项+老师+时段）', async () => {
@@ -260,9 +247,10 @@ test.describe('预约课约课链路（绑定老师）', () => {
     const teacherId = pickOrderTeacherId(teachersRes.body.data) ?? presetTeacherId;
     test.skip(!teacherId, '订单项无可约老师，跳过约课');
 
+    // 多日 + 稀疏起点：共享老师上常有历史 pending，固定 09/11/13 易全撞「该老师该时段已有排课」
     await provisionTeacherAvailableSlots(api, env.shopId!, teacherId!, {
-      date: futureLocalDate(2),
-      startHhmms: ['09:00', '11:00', '13:00', '15:00', '17:00'],
+      dates: [3, 4, 5, 6].map((d) => futureLocalDate(d)),
+      startHhmms: sparseTeacherSlotStarts(6),
       log: {
         ...logBase,
         logName: '请求日志-约课链路-设置老师时段-约课.json',
@@ -277,11 +265,13 @@ test.describe('预约课约课链路（绑定老师）', () => {
       assertions: ['业务 code 应为成功码'],
     }, Endpoints.appointment.orderSlots(orderItemId), { query: slotsQuery });
     expect(slotsRes.body.code, slotsRes.body.msg).toBe(SUCCESS_CODE);
-    const candidates = listAvailableSlots(slotsRes.body.data, teacherId);
-    test.skip(candidates.length === 0, '无完整可约时段，跳过约课');
+    // slots 接口会带回已约满时段（bookedNum>=capacity），须先过滤再约
+    const candidates = listBookableStudentSlots(slotsRes.body.data, teacherId);
+    test.skip(candidates.length === 0, '无仍有空位的可约时段，跳过约课');
 
     let appointmentId: number | undefined;
     await test.step('约课（上游）', async () => {
+      const failures: string[] = [];
       for (const [index, slot] of candidates.entries()) {
         const payload = {
           order_item_id: orderItemId,
@@ -298,8 +288,12 @@ test.describe('预约课约课链路（绑定老师）', () => {
           appointmentId = pickNumber(body.data, ['appointmentId', 'appointment_id', 'id']);
           break;
         }
+        failures.push(`#${index + 1} start=${slot.startUnix} code=${body.code} msg=${body.msg ?? ''}`);
       }
-      expect(appointmentId, '应至少有一个可约时段约课成功').toBeTruthy();
+      expect(
+        appointmentId,
+        `应至少有一个可约时段约课成功；失败明细: ${failures.join(' | ') || '无候选'}`,
+      ).toBeTruthy();
       if (appointmentId) {
         data.register(`appointment ${appointmentId}`, async () => {
           await mobileApi.post(Endpoints.appointment.myCancel(appointmentId!), {

@@ -33,9 +33,15 @@ export {
   pickOrderTeacherId,
   tomorrowLocalDate,
   futureLocalDate,
+  sparseTeacherSlotStarts,
+  listBookableStudentSlots,
   provisionStudentAppointmentOrderItem,
 } from './appointment-provision.js';
-export type { TeacherSlotSetup, StudentAppointmentOrderItem } from './appointment-provision.js';
+export type {
+  TeacherSlotSetup,
+  StudentAppointmentOrderItem,
+  BookableStudentSlot,
+} from './appointment-provision.js';
 export type {
   SampleGoods,
   RefundableOrder,
@@ -53,6 +59,8 @@ export {
   parseBookingRefundPreview,
   buildMerchantCloseOnlineRefundPayload,
   buildAppointmentCloseOnlineRefundPayload,
+  cleanupRefundAppointmentOrder,
+  cleanupRefundMerchantOrder,
 } from './refund.js';
 export type {
   BookingRefundPreview,

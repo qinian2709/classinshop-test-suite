@@ -1,3 +1,4 @@
+import { expect } from '@playwright/test';
 import { API_MAX_RESPONSE_MS } from '../../config/api.js';
 
 /**
@@ -11,6 +12,7 @@ export function resolveMaxApiResponseMs(override?: number): number {
 
 /**
  * 断言单次接口响应耗时未超限。
+ * 用 expect（非 throw），JUnit/企微记入「失败」failures，而非「错误」errors。
  * 供 ApiHelper、以及 tests/api 内偶发的裸 fetch 统一调用——禁止在用例里写死毫秒数。
  */
 export function assertApiResponseDuration(
@@ -20,9 +22,8 @@ export function assertApiResponseDuration(
 ): void {
   const max = resolveMaxApiResponseMs(maxDurationMs);
   if (max <= 0) return;
-  if (durationMs > max) {
-    throw new Error(
-      `接口响应耗时超限 ${label}：${durationMs}ms > ${max}ms（可改 config/api.ts 的 API_MAX_RESPONSE_MS，或单次传 maxDurationMs）`,
-    );
-  }
+  expect(
+    durationMs,
+    `接口响应耗时超限 ${label}：${durationMs}ms > ${max}ms（可改 config/api.ts 的 API_MAX_RESPONSE_MS，或单次传 maxDurationMs）`,
+  ).toBeLessThanOrEqual(max);
 }
