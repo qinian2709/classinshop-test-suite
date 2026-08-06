@@ -5,6 +5,7 @@
  */
 import type { ApiHelper } from '../fixtures/api-helper.js';
 import { Endpoints } from '../api/endpoints.js';
+import { INFRA_API_OPTS, withInfraApiOpts } from './infra.js';
 import { SUCCESS_CODE } from '../http/types.js';
 
 /** 退款渠道：0 线上（原路退回） 1 线下 */
@@ -190,16 +191,16 @@ export async function cleanupRefundAppointmentOrder(
   orderId: number,
 ): Promise<void> {
   if (!orderId) return;
-  const { body: previewBody } = await api.get(Endpoints.shopAdmin.refundBookingPreview(shopId), {
+  const { body: previewBody } = await api.get(Endpoints.shopAdmin.refundBookingPreview(shopId), withInfraApiOpts({
     query: { orderId },
-  });
+  }));
   if (previewBody.code !== SUCCESS_CODE) return;
   const preview = parseBookingRefundPreview(previewBody.data);
   if (!preview || preview.maxRefundHours <= 0) return;
   const payload = buildAppointmentCloseOnlineRefundPayload(preview, {
     remark: '自动化测试清理-预约课退款（关闭课程·线上）',
   });
-  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload);
+  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload, INFRA_API_OPTS);
   if (body.code !== SUCCESS_CODE) {
     throw new Error(`预约课清理退款失败 orderId=${orderId}: ${body.msg ?? ''}`);
   }
@@ -221,7 +222,7 @@ export async function cleanupRefundMerchantOrder(
     refundAmount,
     remark: '自动化测试清理-订单退款（关闭课程·线上）',
   });
-  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload);
+  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload, INFRA_API_OPTS);
   if (body.code !== SUCCESS_CODE) {
     throw new Error(`订单清理退款失败 orderId=${orderId}: ${body.msg ?? ''}`);
   }

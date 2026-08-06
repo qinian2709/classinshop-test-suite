@@ -8,6 +8,7 @@
  */
 import type { ApiHelper } from '../fixtures/api-helper.js';
 import { Endpoints } from '../api/endpoints.js';
+import { INFRA_API_OPTS, withInfraApiOpts } from './infra.js';
 import { SUCCESS_CODE } from '../http/types.js';
 
 /** 从对象的若干候选键里取第一个有效数字。 */
@@ -78,7 +79,7 @@ export async function pickGoods(api: ApiHelper): Promise<SampleGoods | null> {
   if (envGoodsId) {
     candidates.push(envGoodsId);
   } else {
-    const { body } = await api.get(Endpoints.shop.goodsList, { query: { page: 1, limit: 20 } });
+    const { body } = await api.get(Endpoints.shop.goodsList, withInfraApiOpts({ query: { page: 1, limit: 20 } }));
     if (body.code !== SUCCESS_CODE) return null;
     for (const it of asArray(body.data)) {
       const id = pickNumber(it, ['id', 'goodsId', 'goods_id']);
@@ -87,7 +88,7 @@ export async function pickGoods(api: ApiHelper): Promise<SampleGoods | null> {
   }
 
   for (const goodsId of candidates) {
-    const detail = await api.get(Endpoints.shop.goodsDetail(goodsId));
+    const detail = await api.get(Endpoints.shop.goodsDetail(goodsId), INFRA_API_OPTS);
     if (detail.body.code !== SUCCESS_CODE) continue;
     const d = detail.body.data as Record<string, unknown> | undefined;
     if (!d) continue;
@@ -125,7 +126,7 @@ export interface RefundableOrder {
  */
 export async function pickRefundableOrder(api: ApiHelper): Promise<RefundableOrder | null> {
   const envId = process.env.TEST_REFUND_ORDER_ID ? Number(process.env.TEST_REFUND_ORDER_ID) : 0;
-  const { body } = await api.get(Endpoints.user.orders, { query: { page: 1, limit: 20 } });
+  const { body } = await api.get(Endpoints.user.orders, withInfraApiOpts({ query: { page: 1, limit: 20 } }));
   if (body.code !== SUCCESS_CODE) return envId ? { orderId: envId } : null;
   for (const o of asArray(body.data)) {
     const orderId = pickNumber(o, ['id', 'orderId', 'order_id']);
@@ -161,9 +162,9 @@ export async function pickAvailableCoupon(
   input: PickAvailableCouponInput = {},
 ): Promise<AvailableCoupon | null> {
   if (!input.goodsId || !input.skuId) return null;
-  const { body } = await api.get(Endpoints.shop.availableCoupons, {
+  const { body } = await api.get(Endpoints.shop.availableCoupons, withInfraApiOpts({
     query: { goodsId: input.goodsId, skuId: input.skuId },
-  });
+  }));
   if (body.code !== SUCCESS_CODE) return null;
   for (const c of asArray(body.data)) {
     const couponId = pickNumber(c, ['id', 'couponId', 'coupon_id', 'userCouponId', 'user_coupon_id']);
@@ -183,9 +184,9 @@ export async function pickReceivableCoupon(
   mobileApi: ApiHelper,
   shopId: string | number,
 ): Promise<AvailableCoupon | null> {
-  const { body } = await merchantApi.get(Endpoints.shopAdmin.couponList(shopId), {
+  const { body } = await merchantApi.get(Endpoints.shopAdmin.couponList(shopId), withInfraApiOpts({
     query: { page: 1, limit: 30 },
-  });
+  }));
   if (body.code !== SUCCESS_CODE) return null;
 
   for (const c of asArray(body.data)) {
@@ -198,7 +199,7 @@ export async function pickReceivableCoupon(
     if (status !== 1 && status !== undefined && status !== 0) continue;
     if (stockTotal > 0 && stockIssued >= stockTotal) continue;
 
-    const landing = await mobileApi.get(Endpoints.shop.couponDetail(couponId));
+    const landing = await mobileApi.get(Endpoints.shop.couponDetail(couponId), INFRA_API_OPTS);
     if (landing.body.code !== SUCCESS_CODE) continue;
 
     const landingData = landing.body.data as Record<string, unknown> | undefined;
@@ -232,7 +233,7 @@ export async function pickAppointmentOrderItem(
       : undefined;
     return { orderItemId: envId, teacherId: envTeacher };
   }
-  const { body } = await api.get(Endpoints.appointment.my, { query: { page: 1, pageSize: 20 } });
+  const { body } = await api.get(Endpoints.appointment.my, withInfraApiOpts({ query: { page: 1, pageSize: 20 } }));
   if (body.code !== SUCCESS_CODE) return null;
   for (const a of asArray(body.data)) {
     const orderItemId = pickNumber(a, ['orderItemId', 'order_item_id']);

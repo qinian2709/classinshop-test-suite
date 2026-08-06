@@ -5,7 +5,8 @@
 
 /**
  * 单次后端接口响应耗时上限（ms）。
- * - `ApiHelper` / `loggedGet|Post|Raw` / `assertApiResponseDuration` 共用
+ * - 适用于用例正文步骤（`logged*` / 用例内裸 `api.*`）
+ * - fixture 造数（provision）与 cleanup 使用 `shared/data/infra.ts` 的 `INFRA_API_OPTS`（跳过耗时）
  * - `0` 表示关闭全局耗时断言
  * - 单次请求仍可用 `CallOptions.maxDurationMs` / `ApiLogOptions.maxDurationMs` 覆盖
  */

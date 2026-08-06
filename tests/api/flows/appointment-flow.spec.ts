@@ -296,9 +296,11 @@ test.describe('预约课约课链路（绑定老师）', () => {
       ).toBeTruthy();
       if (appointmentId) {
         data.register(`appointment ${appointmentId}`, async () => {
-          await mobileApi.post(Endpoints.appointment.myCancel(appointmentId!), {
-            reason: '自动化测试清理',
-          });
+          await mobileApi.post(
+            Endpoints.appointment.myCancel(appointmentId!),
+            { reason: '自动化测试清理' },
+            { maxDurationMs: 0 },
+          );
         });
       }
     });
