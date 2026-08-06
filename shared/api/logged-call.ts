@@ -1,6 +1,7 @@
-import type { TestInfo } from '@playwright/test';
+import { test, type TestInfo } from '@playwright/test';
 import { API_MAX_RESPONSE_MS } from '../../config/api.js';
 import type { ApiHelper, CallOptions } from '../fixtures/api-helper.js';
+import { assertApiResponseDuration } from '../http/duration.js';
 import type { ApiResponse } from '../http/types.js';
 import { attachApiCallLog } from './report.js';
 
@@ -51,9 +52,10 @@ async function attachLog(
   responseHeaders: Record<string, string> = {},
 ): Promise<void> {
   const maxDurationMs = resolveMaxDurationMs(log);
+  const durationFailed = maxDurationMs > 0 && durationMs > maxDurationMs;
   const durationAssertion =
     maxDurationMs > 0
-      ? [`响应耗时应 ≤ ${maxDurationMs}ms（实际 ${durationMs}ms）`]
+      ? [`响应耗时应 ≤ ${maxDurationMs}ms（实际 ${durationMs}ms）${durationFailed ? ' ✗' : ' ✓'}`]
       : [`响应耗时 ${durationMs}ms（耗时断言已关闭）`];
   await attachApiCallLog({
     testInfo: log.testInfo,
@@ -62,20 +64,26 @@ async function attachLog(
     response: { status, headers: responseHeaders, body },
     durationMs,
     assertions: [...(log.assertions ?? []), ...durationAssertion],
+    assertionFailed: durationFailed,
   });
 }
 
-function callOptsFromLog(
-  log: ApiLogOptions,
-  options: { query?: CallOptions['query']; headers?: Record<string, string> } = {},
+/** 外层 logged* 已建 step：内层跳过 step + 耗时断言，附件写完后再断言。 */
+function callOptsInsideLoggedStep(
+  options: { query?: CallOptions['query']; headers?: Record<string, string>; data?: unknown } = {},
 ): CallOptions {
   return {
     ...options,
-    ...(log.maxDurationMs !== undefined ? { maxDurationMs: log.maxDurationMs } : {}),
+    maxDurationMs: 0,
+    step: false,
   };
 }
 
-/** GET 请求并写入报告附件（每条 HTTP 调用一次 attachApiCallLog）。耗时断言由 ApiHelper 统一执行。 */
+function assertLoggedDuration(log: ApiLogOptions, method: string, path: string, durationMs: number): void {
+  assertApiResponseDuration(`${method} ${path}`, durationMs, log.maxDurationMs);
+}
+
+/** GET 请求并写入报告附件。step 下挂耗时断言，便于报告归到对应 API。 */
 export async function loggedGet<T = unknown>(
   api: ApiHelper,
   log: ApiLogOptions,
@@ -83,22 +91,25 @@ export async function loggedGet<T = unknown>(
   options: { query?: CallOptions['query']; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; body: ApiResponse<T>; durationMs: number }> {
   const url = buildApiRequestUrl(log.apiBaseURL, path, options.query);
-  const result = await api.get<T>(path, callOptsFromLog(log, options));
-  await attachLog(
-    log,
-    'GET',
-    url,
-    null,
-    result.status,
-    result.body,
-    result.durationMs,
-    result.requestHeaders,
-    result.responseHeaders,
-  );
-  return result;
+  return test.step(`GET ${path}`, async () => {
+    const result = await api.get<T>(path, callOptsInsideLoggedStep(options));
+    await attachLog(
+      log,
+      'GET',
+      url,
+      null,
+      result.status,
+      result.body,
+      result.durationMs,
+      result.requestHeaders,
+      result.responseHeaders,
+    );
+    assertLoggedDuration(log, 'GET', path, result.durationMs);
+    return result;
+  });
 }
 
-/** POST 请求并写入报告附件（每条 HTTP 调用一次 attachApiCallLog）。耗时断言由 ApiHelper 统一执行。 */
+/** POST 请求并写入报告附件。step 下挂耗时断言，便于报告归到对应 API。 */
 export async function loggedPost<T = unknown>(
   api: ApiHelper,
   log: ApiLogOptions,
@@ -107,22 +118,25 @@ export async function loggedPost<T = unknown>(
   options: { query?: CallOptions['query']; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; body: ApiResponse<T>; durationMs: number }> {
   const url = buildApiRequestUrl(log.apiBaseURL, path, options.query);
-  const result = await api.post<T>(path, data, callOptsFromLog(log, options));
-  await attachLog(
-    log,
-    'POST',
-    url,
-    data ?? null,
-    result.status,
-    result.body,
-    result.durationMs,
-    result.requestHeaders,
-    result.responseHeaders,
-  );
-  return result;
+  return test.step(`POST ${path}`, async () => {
+    const result = await api.post<T>(path, data, callOptsInsideLoggedStep(options));
+    await attachLog(
+      log,
+      'POST',
+      url,
+      data ?? null,
+      result.status,
+      result.body,
+      result.durationMs,
+      result.requestHeaders,
+      result.responseHeaders,
+    );
+    assertLoggedDuration(log, 'POST', path, result.durationMs);
+    return result;
+  });
 }
 
-/** raw 请求（未登录/HTTP 状态断言）并写入报告附件。耗时断言由 ApiHelper 统一执行。 */
+/** raw 请求并写入报告附件。step 下挂耗时断言，便于报告归到对应 API。 */
 export async function loggedRaw(
   api: ApiHelper,
   log: ApiLogOptions,
@@ -131,28 +145,28 @@ export async function loggedRaw(
   options: { data?: unknown; query?: CallOptions['query']; headers?: Record<string, string> } = {},
 ): Promise<{ status: number; body: unknown; durationMs: number }> {
   const url = buildApiRequestUrl(log.apiBaseURL, path, options.query);
-  const res = await api.raw(method, path, {
-    ...options,
-    ...(log.maxDurationMs !== undefined ? { maxDurationMs: log.maxDurationMs } : {}),
+  return test.step(`${method.toUpperCase()} ${path}`, async () => {
+    const res = await api.raw(method, path, callOptsInsideLoggedStep(options));
+    const status = res.status();
+    const durationMs = res.durationMs();
+    let body: unknown;
+    try {
+      body = status === 200 ? await res.json() : await res.text();
+    } catch {
+      body = null;
+    }
+    await attachLog(
+      log,
+      method.toUpperCase(),
+      url,
+      options.data ?? null,
+      status,
+      body,
+      durationMs,
+      res.requestHeaders(),
+      res.responseHeaders(),
+    );
+    assertLoggedDuration(log, method.toUpperCase(), path, durationMs);
+    return { status, body, durationMs };
   });
-  const status = res.status();
-  const durationMs = res.durationMs();
-  let body: unknown;
-  try {
-    body = status === 200 ? await res.json() : await res.text();
-  } catch {
-    body = null;
-  }
-  await attachLog(
-    log,
-    method.toUpperCase(),
-    url,
-    options.data ?? null,
-    status,
-    body,
-    durationMs,
-    res.requestHeaders(),
-    res.responseHeaders(),
-  );
-  return { status, body, durationMs };
 }

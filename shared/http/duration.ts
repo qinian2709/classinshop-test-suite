@@ -22,8 +22,9 @@ export function assertApiResponseDuration(
 ): void {
   const max = resolveMaxApiResponseMs(maxDurationMs);
   if (max <= 0) return;
+  // Playwright 把第 2 参当 step 标题（通过/失败都显示），勿写成「超限 / >」失败文案。
   expect(
     durationMs,
-    `接口响应耗时超限 ${label}：${durationMs}ms > ${max}ms（可改 config/api.ts 的 API_MAX_RESPONSE_MS，或单次传 maxDurationMs）`,
+    `接口响应耗时 ${label}：${durationMs}ms（上限 ${max}ms）`,
   ).toBeLessThanOrEqual(max);
 }

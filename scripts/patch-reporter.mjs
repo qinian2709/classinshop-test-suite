@@ -26,6 +26,13 @@ const reporterPath = join(
   'dist',
   'html-generator.js',
 );
+const indexPath = join(
+  projectRoot,
+  'node_modules',
+  'playwright-enhanced-reporter',
+  'dist',
+  'index.js',
+);
 const typesPath = join(
   projectRoot,
   'node_modules',
@@ -546,11 +553,510 @@ function main() {
     }
   }
 
+  // 8. Suites step 错误被 flex 横向挤成竖条：主行 / 错误 / 子 step 纵向堆叠
+  if (!content.includes('patched: step-item stack error/children')) {
+    const stepItemCssNeedle =
+      '        .step-item {\n' +
+      '            display: flex;\n' +
+      '            align-items: flex-start;\n' +
+      '            gap: 8px;\n' +
+      '            padding: 6px 0;\n' +
+      '            font-size: 0.9rem;\n' +
+      '        }';
+    const stepItemCssReplacement =
+      '        /* patched: step-item stack error/children */\n' +
+      '        .step-item {\n' +
+      '            display: flex;\n' +
+      '            flex-direction: column;\n' +
+      '            align-items: stretch;\n' +
+      '            gap: 4px;\n' +
+      '            padding: 6px 0;\n' +
+      '            font-size: 0.9rem;\n' +
+      '            min-width: 0;\n' +
+      '            width: 100%;\n' +
+      '            box-sizing: border-box;\n' +
+      '        }\n' +
+      '        .step-main {\n' +
+      '            display: flex;\n' +
+      '            align-items: flex-start;\n' +
+      '            gap: 8px;\n' +
+      '            min-width: 0;\n' +
+      '            width: 100%;\n' +
+      '        }\n' +
+      '        .step-main .step-title {\n' +
+      '            flex: 1;\n' +
+      '            min-width: 0;\n' +
+      '            overflow-wrap: anywhere;\n' +
+      '            word-break: break-word;\n' +
+      '        }\n' +
+      '        .step-error, .test-error {\n' +
+      '            width: 100%;\n' +
+      '            min-width: 0;\n' +
+      '            max-width: 100%;\n' +
+      '            box-sizing: border-box;\n' +
+      '            overflow-wrap: anywhere;\n' +
+      '            word-break: break-word;\n' +
+      '            white-space: normal;\n' +
+      '        }\n' +
+      '        .step-error code, .test-error code {\n' +
+      '            display: block;\n' +
+      '            white-space: pre-wrap;\n' +
+      '            overflow-wrap: anywhere;\n' +
+      '            word-break: break-word;\n' +
+      '        }';
+    if (!content.includes(stepItemCssNeedle)) {
+      console.warn('⚠️  patch #8 step-item css needle not found, skipping');
+    } else {
+      content = content.replace(stepItemCssNeedle, stepItemCssReplacement);
+      patched = true;
+    }
+  }
+
+  if (!content.includes('class="step-main"')) {
+    const stepOpenNeedle =
+      '        <div class="step-item" style="padding-left: ${level * 20}px">\n' +
+      "            <i class=\"fas fa-${step.status === 'passed' ? 'check-circle' : step.status === 'failed' ? 'times-circle' : 'minus-circle'} step-status ${step.status}\"></i>\n" +
+      '            <span class="step-title">${this.escapeHtml(step.title)}</span>\n' +
+      '            <span class="step-duration">${step.duration}ms</span>';
+    const stepOpenReplacement =
+      '        <div class="step-item" style="padding-left: ${level * 20}px">\n' +
+      '            <div class="step-main">\n' +
+      "            <i class=\"fas fa-${step.status === 'passed' ? 'check-circle' : step.status === 'failed' ? 'times-circle' : 'minus-circle'} step-status ${step.status}\"></i>\n" +
+      '            <span class="step-title">${this.escapeHtml(step.title)}</span>\n' +
+      '            <span class="step-duration">${step.duration}ms</span>\n' +
+      '            </div>';
+    if (!content.includes(stepOpenNeedle)) {
+      console.warn('⚠️  patch #8 step html needle not found, skipping');
+    } else {
+      content = content.replace(stepOpenNeedle, stepOpenReplacement);
+      patched = true;
+    }
+  }
+
+  // 10b. API Requests：断言失败行标红（HTTP 200 也可能耗时断言失败）
+  if (!content.includes('patched: api-request assertion failed badge')) {
+    const apiItemNeedle =
+      '                <div class="api-request-item">\n' +
+      '                    <div class="api-request-header" onclick="toggleApiRequestDetails(this)">\n' +
+      '                        <span class="api-method method-${req.method.toLowerCase()}">${req.method}</span>\n' +
+      '                        <span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url)}</span>\n' +
+      "                        ${req.responseStatus ? `<span class=\"api-status status-${req.responseStatus >= 200 && req.responseStatus < 300 ? 'success' : req.responseStatus >= 400 ? 'error' : 'warning'}\">${req.responseStatus}</span>` : ''}\n" +
+      '                        ${req.duration ? `<span class="api-duration">${req.duration}ms</span>` : \'\'}\n' +
+      '                        <i class="fas fa-chevron-down api-toggle"></i>\n' +
+      '                    </div>';
+    const apiItemReplacement =
+      '                <div class="api-request-item${req.assertionFailed ? \' api-request-failed\' : \'\'}">\n' +
+      '                    <div class="api-request-header" onclick="toggleApiRequestDetails(this)">\n' +
+      '                        <span class="api-method method-${req.method.toLowerCase()}">${req.method}</span>\n' +
+      '                        <span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url)}</span>\n' +
+      "                        ${req.responseStatus ? `<span class=\"api-status status-${req.responseStatus >= 200 && req.responseStatus < 300 ? 'success' : req.responseStatus >= 400 ? 'error' : 'warning'}\">${req.responseStatus}</span>` : ''}\n" +
+      '                        ${req.assertionFailed ? \'<span class="api-assert-fail" title="业务/耗时断言失败（HTTP 状态仍可能为 200）">断言失败</span>\' : \'\'}\n' +
+      '                        ${req.duration ? `<span class="api-duration${req.assertionFailed ? \' fail\' : \'\'}">${req.duration}ms</span>` : \'\'}\n' +
+      '                        <i class="fas fa-chevron-down api-toggle"></i>\n' +
+      '                    </div>';
+    if (!content.includes(apiItemNeedle)) {
+      // 兼容尚未打 #10 URL 补丁的截断版
+      const apiItemNeedleTrunc =
+        '                <div class="api-request-item">\n' +
+        '                    <div class="api-request-header" onclick="toggleApiRequestDetails(this)">\n' +
+        '                        <span class="api-method method-${req.method.toLowerCase()}">${req.method}</span>\n' +
+        '                        <span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url.length > 60 ? req.url.substring(0, 60) + \'...\' : req.url)}</span>\n' +
+        "                        ${req.responseStatus ? `<span class=\"api-status status-${req.responseStatus >= 200 && req.responseStatus < 300 ? 'success' : req.responseStatus >= 400 ? 'error' : 'warning'}\">${req.responseStatus}</span>` : ''}\n" +
+        '                        ${req.duration ? `<span class="api-duration">${req.duration}ms</span>` : \'\'}\n' +
+        '                        <i class="fas fa-chevron-down api-toggle"></i>\n' +
+        '                    </div>';
+      if (content.includes(apiItemNeedleTrunc)) {
+        content = content.replace(apiItemNeedleTrunc, apiItemReplacement);
+        patched = true;
+      } else {
+        console.warn('⚠️  patch #10b api-request item needle not found, skipping');
+      }
+    } else {
+      content = content.replace(apiItemNeedle, apiItemReplacement);
+      patched = true;
+    }
+
+    const apiDetailsBodyNeedle =
+      '                        ${req.responseBody ? `\n' +
+      '                            <div class="api-section">\n' +
+      '                                <h5><i class="fas fa-arrow-down"></i> Response Body</h5>\n' +
+      '                                <pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.responseBody))}</pre>\n' +
+      '                            </div>\n' +
+      '                        ` : \'\'}\n' +
+      '                    </div>';
+    const apiDetailsBodyReplacement =
+      '                        ${req.responseBody ? `\n' +
+      '                            <div class="api-section">\n' +
+      '                                <h5><i class="fas fa-arrow-down"></i> Response Body</h5>\n' +
+      '                                <pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.responseBody))}</pre>\n' +
+      '                            </div>\n' +
+      '                        ` : \'\'}\n' +
+      '                        ${req.assertions && req.assertions.length ? `\n' +
+      '                            <div class="api-section">\n' +
+      '                                <h5><i class="fas fa-check-double"></i> Assertions</h5>\n' +
+      '                                <ul class="api-assertions${req.assertionFailed ? \' failed\' : \'\'}">${req.assertions.map(a => `<li>${this.escapeHtml(String(a))}</li>`).join(\'\')}</ul>\n' +
+      '                            </div>\n' +
+      '                        ` : \'\'}\n' +
+      '                    </div>';
+    if (!content.includes(apiDetailsBodyNeedle)) {
+      console.warn('⚠️  patch #10b api assertions details needle not found, skipping');
+    } else {
+      content = content.replace(apiDetailsBodyNeedle, apiDetailsBodyReplacement);
+      patched = true;
+    }
+
+    const apiItemCssNeedle =
+      '        .api-request-item {\n' +
+      '            background: var(--md-surface);\n' +
+      '            border: 1px solid var(--md-outline);\n' +
+      '            border-radius: 6px;\n' +
+      '            margin-bottom: 8px;\n' +
+      '            overflow: hidden;\n' +
+      '        }';
+    const apiItemCssReplacement =
+      '        /* patched: api-request assertion failed badge */\n' +
+      '        .api-request-item {\n' +
+      '            background: var(--md-surface);\n' +
+      '            border: 1px solid var(--md-outline);\n' +
+      '            border-radius: 6px;\n' +
+      '            margin-bottom: 8px;\n' +
+      '            overflow: hidden;\n' +
+      '        }\n' +
+      '        .api-request-item.api-request-failed {\n' +
+      '            border-color: var(--status-failed);\n' +
+      '            background: var(--status-failed-bg);\n' +
+      '        }\n' +
+      '        .api-assert-fail {\n' +
+      '            flex: 0 0 auto;\n' +
+      '            font-size: 0.7rem;\n' +
+      '            font-weight: 700;\n' +
+      '            color: #fff;\n' +
+      '            background: var(--status-failed);\n' +
+      '            padding: 2px 8px;\n' +
+      '            border-radius: 4px;\n' +
+      '            white-space: nowrap;\n' +
+      '        }\n' +
+      '        .api-duration.fail {\n' +
+      '            color: var(--status-failed);\n' +
+      '            font-weight: 700;\n' +
+      '        }\n' +
+      '        .api-assertions {\n' +
+      '            margin: 0;\n' +
+      '            padding-left: 1.2rem;\n' +
+      '            font-size: 0.8rem;\n' +
+      '        }\n' +
+      '        .api-assertions.failed li {\n' +
+      '            color: var(--status-failed);\n' +
+      '        }';
+    if (!content.includes(apiItemCssNeedle)) {
+      console.warn('⚠️  patch #10b api-request css needle not found, skipping');
+    } else {
+      content = content.replace(apiItemCssNeedle, apiItemCssReplacement);
+      patched = true;
+    }
+  }
+
+  // 11. 步骤/API 聚合：可收起展开；失败默认展开，通过默认收起
+  if (!content.includes('patched: step/api collapse aggregate')) {
+    const oldStepsFn =
+      '    static generateStepsHierarchy(steps, level = 0) {\n' +
+      '        return steps.map(step => `\n' +
+      '        <div class="step-item" style="padding-left: ${level * 20}px">\n' +
+      '            <div class="step-main">\n' +
+      "            <i class=\"fas fa-${step.status === 'passed' ? 'check-circle' : step.status === 'failed' ? 'times-circle' : 'minus-circle'} step-status ${step.status}\"></i>\n" +
+      '            <span class="step-title">${this.escapeHtml(step.title)}</span>\n' +
+      '            <span class="step-duration">${step.duration}ms</span>\n' +
+      '            </div>\n' +
+      '            ${step.error ? `<div class="step-error"><code>${this.escapeHtml(step.error)}</code></div>` : \'\'}\n' +
+      '            ${step.steps && step.steps.length > 0 ? this.generateStepsHierarchy(step.steps, level + 1) : \'\'}\n' +
+      '        </div>\n' +
+      '    `).join(\'\');\n' +
+      '    }';
+    const newStepsFn =
+      '    // patched: step/api collapse aggregate\n' +
+      '    static stepTreeHasFailure(step) {\n' +
+      "        if (step.status === 'failed') return true;\n" +
+      '        return !!(step.steps && step.steps.some(s => this.stepTreeHasFailure(s)));\n' +
+      '    }\n' +
+      '    static generateStepsHierarchy(steps, level = 0) {\n' +
+      '        return steps.map(step => {\n' +
+      '            const kids = step.steps && step.steps.length ? step.steps : null;\n' +
+      '            const hasFail = this.stepTreeHasFailure(step);\n' +
+      '            const failKids = kids ? kids.filter(s => this.stepTreeHasFailure(s)).length : 0;\n' +
+      '            const passKids = kids ? kids.length - failKids : 0;\n' +
+      '            const openKids = hasFail;\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}" style="padding-left: ${level * 20}px">\n' +
+      '            <div class="step-main${kids ? \' step-main-toggle\' : \'\'}"${kids ? \' onclick="toggleStepChildren(this)"\' : \'\'}>\n' +
+      '            ${kids ? `<i class="fas fa-chevron-${openKids ? \'down\' : \'right\'} step-branch-toggle"></i>` : \'<i class="step-branch-spacer"></i>\'}\n' +
+      "            <i class=\"fas fa-${step.status === 'passed' ? 'check-circle' : step.status === 'failed' ? 'times-circle' : 'minus-circle'} step-status ${step.status}\"></i>\n" +
+      '            <span class="step-title">${this.escapeHtml(step.title)}</span>\n' +
+      '            ${kids ? `<span class="step-agg">${kids.length} 项${failKids ? ` · <b class="fail">${failKids} 失败</b>` : \'\'}${passKids && failKids ? ` · ${passKids} 通过` : \'\'}</span>` : \'\'}\n' +
+      '            <span class="step-duration">${step.duration}ms</span>\n' +
+      '            </div>\n' +
+      '            ${step.error && !(kids && kids.some(s => s.error || s.status === \'failed\')) ? `<div class="step-error"><code>${this.escapeHtml(this.sanitizeErrorMessage(step.error))}</code></div>` : \'\'}\n' +
+      '            ${kids ? `<div class="step-children"${openKids ? \'\' : \' style="display: none;"\'}>${this.generateStepsHierarchy(kids, level + 1)}</div>` : \'\'}\n' +
+      '        </div>`;\n' +
+      '        }).join(\'\');\n' +
+      '    }';
+    if (!content.includes(oldStepsFn)) {
+      console.warn('⚠️  patch #11 steps hierarchy needle not found, skipping');
+    } else {
+      content = content.replace(oldStepsFn, newStepsFn);
+      patched = true;
+    }
+
+    // API：失败置顶展开；通过收进可展开分组
+    const oldApiSectionStart =
+      '    static generateApiRequestsSection(apiRequests) {\n' +
+      '        return `\n' +
+      '        <div class="api-requests-container">\n' +
+      '            <h4><i class="fas fa-exchange-alt"></i> API Requests (${apiRequests.length})</h4>\n' +
+      '            ${apiRequests.map((req, index) => `';
+    if (
+      content.includes(oldApiSectionStart) &&
+      !content.includes('patched: api requests aggregate groups')
+    ) {
+      const apiSectionRe =
+        /    static generateApiRequestsSection\(apiRequests\) \{\n        return `\n        <div class="api-requests-container">\n            <h4><i class="fas fa-exchange-alt"><\/i> API Requests \(\$\{apiRequests\.length\}\)<\/h4>\n            \$\{apiRequests\.map\(\(req, index\) => `[\s\S]*?`\)\.join\(''\)\}\n        <\/div>`;\n    }/;
+      const newApiSection =
+        '    static generateApiRequestsSection(apiRequests) {\n' +
+        '        // patched: api requests aggregate groups\n' +
+        '        const failed = apiRequests.filter(r => r.assertionFailed);\n' +
+        '        const passed = apiRequests.filter(r => !r.assertionFailed);\n' +
+        '        const renderReq = (req) => `\n' +
+        '                <div class="api-request-item${req.assertionFailed ? \' api-request-failed\' : \'\'}">\n' +
+        '                    <div class="api-request-header" onclick="toggleApiRequestDetails(this)">\n' +
+        '                        <span class="api-method method-${req.method.toLowerCase()}">${req.method}</span>\n' +
+        '                        <span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url)}</span>\n' +
+        '                        ${req.responseStatus ? `<span class="api-status status-${req.responseStatus >= 200 && req.responseStatus < 300 ? \'success\' : req.responseStatus >= 400 ? \'error\' : \'warning\'}">${req.responseStatus}</span>` : \'\'}\n' +
+        '                        ${req.assertionFailed ? \'<span class="api-assert-fail" title="业务/耗时断言失败（HTTP 状态仍可能为 200）">断言失败</span>\' : \'\'}\n' +
+        '                        ${req.duration ? `<span class="api-duration${req.assertionFailed ? \' fail\' : \'\'}">${req.duration}ms</span>` : \'\'}\n' +
+        '                        <i class="fas fa-chevron-down api-toggle"></i>\n' +
+        '                    </div>\n' +
+        '                    <div class="api-request-details" style="display: none;">\n' +
+        '                        ${req.requestHeaders ? `<div class="api-section"><h5><i class="fas fa-arrow-up"></i> Request Headers</h5><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.requestHeaders, null, 2))}</pre></div>` : \'\'}\n' +
+        '                        ${req.requestBody ? `<div class="api-section"><h5><i class="fas fa-arrow-up"></i> Request Body</h5><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.requestBody))}</pre></div>` : \'\'}\n' +
+        '                        ${req.responseHeaders ? `<div class="api-section"><h5><i class="fas fa-arrow-down"></i> Response Headers</h5><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.responseHeaders, null, 2))}</pre></div>` : \'\'}\n' +
+        '                        ${req.responseBody ? `<div class="api-section"><h5><i class="fas fa-arrow-down"></i> Response Body</h5><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.responseBody))}</pre></div>` : \'\'}\n' +
+        '                        ${req.assertions && req.assertions.length ? `<div class="api-section"><h5><i class="fas fa-check-double"></i> Assertions</h5><ul class="api-assertions${req.assertionFailed ? \' failed\' : \'\'}">${req.assertions.map(a => `<li>${this.escapeHtml(String(a))}</li>`).join(\'\')}</ul></div>` : \'\'}\n' +
+        '                    </div>\n' +
+        '                </div>`;\n' +
+        '        return `\n' +
+        '        <div class="api-requests-container">\n' +
+        '            <h4><i class="fas fa-exchange-alt"></i> API Requests (${apiRequests.length})\n' +
+        '                ${failed.length ? `<span class="api-sum-fail">${failed.length} 失败</span>` : \'\'}\n' +
+        '                ${passed.length ? `<span class="api-sum-pass">${passed.length} 通过</span>` : \'\'}\n' +
+        '            </h4>\n' +
+        '            ${failed.length ? `<div class="api-failed-group">${failed.map(renderReq).join(\'\')}</div>` : \'\'}\n' +
+        '            ${passed.length ? `\n' +
+        '            <div class="api-passed-group">\n' +
+        '                <div class="api-passed-header" onclick="toggleApiPassedGroup(this)">\n' +
+        '                    <i class="fas fa-chevron-right"></i>\n' +
+        '                    <span>通过的请求（${passed.length}）— 点击展开</span>\n' +
+        '                </div>\n' +
+        '                <div class="api-passed-body" style="display: none;">${passed.map(renderReq).join(\'\')}</div>\n' +
+        '            </div>` : \'\'}\n' +
+        '        </div>`;\n' +
+        '    }';
+      if (!apiSectionRe.test(content)) {
+        console.warn('⚠️  patch #11 api section regex not found, skipping');
+      } else {
+        content = content.replace(apiSectionRe, newApiSection);
+        patched = true;
+      }
+    }
+
+    const stepCssNeedle =
+      '        /* patched: step-item stack error/children */\n';
+    if (content.includes(stepCssNeedle) && !content.includes('patched: step collapse css')) {
+      const stepCollapseCss =
+        '        /* patched: step collapse css */\n' +
+        '        .step-main-toggle { cursor: pointer; }\n' +
+        '        .step-main-toggle:hover { background: rgba(0,0,0,0.03); border-radius: 4px; }\n' +
+        '        .step-branch-toggle { width: 14px; color: rgba(0,0,0,0.45); font-size: 0.75rem; margin-top: 3px; }\n' +
+        '        .step-branch-spacer { display: inline-block; width: 14px; }\n' +
+        '        .step-agg { font-size: 0.75rem; color: rgba(0,0,0,0.55); white-space: nowrap; }\n' +
+        '        .step-agg .fail { color: var(--status-failed); font-weight: 700; }\n' +
+        '        .step-children { margin-top: 2px; }\n' +
+        '        .step-item.has-fail > .step-main .step-title { font-weight: 600; }\n' +
+        '        .api-sum-fail, .api-sum-pass {\n' +
+        '            display: inline-block; margin-left: 8px; font-size: 0.75rem;\n' +
+        '            padding: 2px 8px; border-radius: 999px; font-weight: 600;\n' +
+        '        }\n' +
+        '        .api-sum-fail { background: var(--status-failed-bg); color: var(--status-failed); }\n' +
+        '        .api-sum-pass { background: var(--status-passed-bg); color: var(--status-passed); }\n' +
+        '        .api-passed-group { margin-top: 8px; border: 1px dashed var(--md-outline); border-radius: 6px; }\n' +
+        '        .api-passed-header {\n' +
+        '            display: flex; align-items: center; gap: 8px; padding: 10px 12px;\n' +
+        '            cursor: pointer; font-size: 0.85rem; color: rgba(0,0,0,0.65);\n' +
+        '        }\n' +
+        '        .api-passed-header:hover { background: var(--md-surface-variant); }\n' +
+        '        .api-passed-body { padding: 0 8px 8px; }\n' +
+        '        .api-failed-group { margin-bottom: 8px; }\n';
+      content = content.replace(stepCssNeedle, stepCollapseCss + stepCssNeedle);
+      patched = true;
+    }
+
+    const toggleApiNeedle =
+      '        // API Request Details Toggle Function\n' +
+      '        function toggleApiRequestDetails(headerElement) {';
+    const toggleApiExtra =
+      '        // patched: step/api collapse helpers\n' +
+      '        function toggleStepChildren(mainEl) {\n' +
+      "            const item = mainEl.closest('.step-item');\n" +
+      "            const kids = item && item.querySelector(':scope > .step-children');\n" +
+      "            const icon = mainEl.querySelector('.step-branch-toggle');\n" +
+      '            if (!kids) return;\n' +
+      "            const open = kids.style.display !== 'none';\n" +
+      "            kids.style.display = open ? 'none' : 'block';\n" +
+      '            if (icon) {\n' +
+      "                icon.className = open ? 'fas fa-chevron-right step-branch-toggle' : 'fas fa-chevron-down step-branch-toggle';\n" +
+      '            }\n' +
+      '        }\n' +
+      '        function toggleApiPassedGroup(headerEl) {\n' +
+      "            const group = headerEl.closest('.api-passed-group');\n" +
+      "            const body = group && group.querySelector('.api-passed-body');\n" +
+      "            const icon = headerEl.querySelector('i');\n" +
+      '            if (!body) return;\n' +
+      "            const open = body.style.display !== 'none';\n" +
+      "            body.style.display = open ? 'none' : 'block';\n" +
+      '            if (icon) {\n' +
+      "                icon.className = open ? 'fas fa-chevron-right' : 'fas fa-chevron-down';\n" +
+      '            }\n' +
+      '        }\n' +
+      '\n' +
+      '        // API Request Details Toggle Function\n' +
+      '        function toggleApiRequestDetails(headerElement) {';
+    if (!content.includes('function toggleStepChildren(')) {
+      if (!content.includes(toggleApiNeedle)) {
+        console.warn('⚠️  patch #11 toggle js needle not found, skipping');
+      } else {
+        content = content.replace(toggleApiNeedle, toggleApiExtra);
+        patched = true;
+      }
+    }
+  }
+
+  // 11b. 父 test.step 与子 expect 会各带一份 error——有失败子节点时父级不再渲染 error
+  if (
+    content.includes('generateStepsHierarchy') &&
+    !content.includes("kids.some(s => s.error || s.status === 'failed')")
+  ) {
+    const dupErrorNeedle =
+      '            ${step.error ? `<div class="step-error"><code>${this.escapeHtml(step.error)}</code></div>` : \'\'}\n' +
+      '            ${kids ? `<div class="step-children"';
+    const dupErrorReplacement =
+      '            ${step.error && !(kids && kids.some(s => s.error || s.status === \'failed\')) ? `<div class="step-error"><code>${this.escapeHtml(this.sanitizeErrorMessage(step.error))}</code></div>` : \'\'}\n' +
+      '            ${kids ? `<div class="step-children"';
+    if (!content.includes(dupErrorNeedle)) {
+      console.warn('⚠️  patch #11b dedupe step error needle not found, skipping');
+    } else {
+      content = content.replace(dupErrorNeedle, dupErrorReplacement);
+      patched = true;
+    }
+  }
+
+  // 10. API Requests URL：去掉 60 字截断，完整展示 + wrap；title 保留作 hover
+  if (!content.includes('patched: api-url show full')) {
+    const apiUrlHtmlNeedle =
+      '<span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url.length > 60 ? req.url.substring(0, 60) + \'...\' : req.url)}</span>';
+    const apiUrlHtmlReplacement =
+      '<span class="api-url" title="${this.escapeHtml(req.url)}">${this.escapeHtml(req.url)}</span>';
+    if (!content.includes(apiUrlHtmlNeedle)) {
+      console.warn('⚠️  patch #10 api-url html needle not found, skipping');
+    } else {
+      content = content.replace(apiUrlHtmlNeedle, apiUrlHtmlReplacement);
+      patched = true;
+    }
+
+    const apiUrlCssNeedle =
+      '        .api-url {\n' +
+      '            flex: 1;\n' +
+      '            font-family: var(--font-mono);\n' +
+      '            font-size: 0.8rem;\n' +
+      '            color: rgba(0, 0, 0, 0.7);\n' +
+      '            overflow: hidden;\n' +
+      '            text-overflow: ellipsis;\n' +
+      '            white-space: nowrap;\n' +
+      '        }';
+    const apiUrlCssReplacement =
+      '        /* patched: api-url show full */\n' +
+      '        .api-url {\n' +
+      '            flex: 1;\n' +
+      '            min-width: 0;\n' +
+      '            font-family: var(--font-mono);\n' +
+      '            font-size: 0.8rem;\n' +
+      '            color: rgba(0, 0, 0, 0.7);\n' +
+      '            white-space: normal;\n' +
+      '            overflow-wrap: anywhere;\n' +
+      '            word-break: break-all;\n' +
+      '        }';
+    if (!content.includes(apiUrlCssNeedle)) {
+      console.warn('⚠️  patch #10 api-url css needle not found, skipping');
+    } else {
+      content = content.replace(apiUrlCssNeedle, apiUrlCssReplacement);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
     console.log('✅ playwright-enhanced-reporter patched');
   } else {
     console.log('ℹ️  playwright-enhanced-reporter already patched, skipping');
+  }
+
+  // 9. 重试最终通过时，不把中间失败 attempt 写入报告（Suites/Details/Failed 筛选）
+  if (existsSync(indexPath)) {
+    const indexRaw = readFileSync(indexPath, 'utf-8');
+    let indexContent = indexRaw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let indexPatched = indexRaw !== indexContent;
+
+    if (!indexContent.includes('patched: only keep final attempt')) {
+      const earlyReturnNeedle =
+        '        // Extract attachments (screenshots, videos, traces, etc.)\n' +
+        '        const attachments = this.extractAttachments(result);';
+      const earlyReturnReplacement =
+        '        // patched: only keep final attempt (drop superseded failed retries)\n' +
+        '        if (!isFinalResult) {\n' +
+        '            return;\n' +
+        '        }\n' +
+        '        // Extract attachments (screenshots, videos, traces, etc.)\n' +
+        '        const attachments = this.extractAttachments(result);';
+      if (!indexContent.includes(earlyReturnNeedle)) {
+        console.warn('⚠️  patch #9 final-attempt needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(earlyReturnNeedle, earlyReturnReplacement);
+        indexPatched = true;
+      }
+    }
+
+    // 解析附件里的 durationMs / assertionFailed（供 API Requests 标红）
+    if (!indexContent.includes('patched: extract assertionFailed')) {
+      const durationExtractNeedle =
+        '                                        duration: parsed.duration || ((_h = parsed.timing) === null || _h === void 0 ? void 0 : _h.duration),\n' +
+        '                                        timestamp: parsed.timestamp ? new Date(parsed.timestamp) : undefined';
+      const durationExtractReplacement =
+        '                                        // patched: extract assertionFailed\n' +
+        '                                        duration: parsed.durationMs || parsed.duration || ((_h = parsed.timing) === null || _h === void 0 ? void 0 : _h.duration),\n' +
+        '                                        assertions: parsed.assertions,\n' +
+        '                                        assertionFailed: !!parsed.assertionFailed,\n' +
+        '                                        timestamp: parsed.timestamp ? new Date(parsed.timestamp) : undefined';
+      if (!indexContent.includes(durationExtractNeedle)) {
+        console.warn('⚠️  patch #9b api extract needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(durationExtractNeedle, durationExtractReplacement);
+        indexPatched = true;
+      }
+    }
+
+    if (indexPatched) {
+      writeFileSync(indexPath, indexContent, 'utf-8');
+      console.log('✅ playwright-enhanced-reporter index patched');
+    } else {
+      console.log('ℹ️  playwright-enhanced-reporter index already patched, skipping');
+    }
   }
 
   if (existsSync(typesPath)) {
