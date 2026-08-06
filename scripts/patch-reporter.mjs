@@ -238,6 +238,53 @@ function main() {
     }
   }
 
+  // 6d. Clear 与筛选项同一行（勿折行）
+  if (
+    content.includes('#global-filters .filters-sticky') &&
+    !content.includes('#global-filters .clear-filters-btn')
+  ) {
+    const stickyBlockNeedle =
+      '        #global-filters .filters-sticky {\n' +
+      '            margin-bottom: 0;\n' +
+      '            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);\n' +
+      '            background: var(--md-surface);\n' +
+      '        }';
+    const stickyBlockReplacement =
+      '        #global-filters .filters-sticky {\n' +
+      '            margin-bottom: 0;\n' +
+      '            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);\n' +
+      '            background: var(--md-surface);\n' +
+      '            flex-wrap: nowrap;\n' +
+      '            align-items: flex-end;\n' +
+      '            gap: 10px;\n' +
+      '            padding: 14px 16px;\n' +
+      '        }\n' +
+      '        #global-filters .filter-group {\n' +
+      '            min-width: 0;\n' +
+      '            flex: 1 1 0;\n' +
+      '        }\n' +
+      '        #global-filters .filter-input,\n' +
+      '        #global-filters .filter-select {\n' +
+      '            min-width: 0;\n' +
+      '            width: 100%;\n' +
+      '            font-size: 0.875rem;\n' +
+      '            padding: 8px 10px;\n' +
+      '        }\n' +
+      '        #global-filters .clear-filters-btn {\n' +
+      '            flex: 0 0 auto;\n' +
+      '            align-self: flex-end;\n' +
+      '            white-space: nowrap;\n' +
+      '            padding: 8px 14px;\n' +
+      '            font-size: 0.875rem;\n' +
+      '        }';
+    if (!content.includes(stickyBlockNeedle)) {
+      console.warn('⚠️  patch #6d nowrap css needle not found, skipping');
+    } else {
+      content = content.replace(stickyBlockNeedle, stickyBlockReplacement);
+      patched = true;
+    }
+  }
+
   // 6c. 筛选不改 Test Results 饼图（仅 Suites/Details 跟着变）
   if (
     content.includes('updateChartsFromFilteredRows(filteredRows)') &&
@@ -273,6 +320,28 @@ function main() {
       '            margin-bottom: 0;\n' +
       '            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);\n' +
       '            background: var(--md-surface);\n' +
+      '            flex-wrap: nowrap;\n' +
+      '            align-items: flex-end;\n' +
+      '            gap: 10px;\n' +
+      '            padding: 14px 16px;\n' +
+      '        }\n' +
+      '        #global-filters .filter-group {\n' +
+      '            min-width: 0;\n' +
+      '            flex: 1 1 0;\n' +
+      '        }\n' +
+      '        #global-filters .filter-input,\n' +
+      '        #global-filters .filter-select {\n' +
+      '            min-width: 0;\n' +
+      '            width: 100%;\n' +
+      '            font-size: 0.875rem;\n' +
+      '            padding: 8px 10px;\n' +
+      '        }\n' +
+      '        #global-filters .clear-filters-btn {\n' +
+      '            flex: 0 0 auto;\n' +
+      '            align-self: flex-end;\n' +
+      '            white-space: nowrap;\n' +
+      '            padding: 8px 14px;\n' +
+      '            font-size: 0.875rem;\n' +
       '        }\n' +
       '        .legend-item.filterable,\n' +
       '        .metric-card.filterable {\n' +
