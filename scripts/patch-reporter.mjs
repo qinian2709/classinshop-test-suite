@@ -957,6 +957,227 @@ function main() {
     }
   }
 
+  // 12. 步骤断言整体展开/收起；API section（headers/body）各自折叠
+  if (!content.includes('function toggleAllStepAsserts(')) {
+    const stepsWrapNeedle =
+      '                <div class="test-steps" style="display: none;">\n' +
+      '                    ${this.generateStepsHierarchy(test.steps)}\n' +
+      '                </div>';
+    const stepsWrapReplacement =
+      '                <div class="test-steps" style="display: none;">\n' +
+      '                    <div class="steps-toolbar">\n' +
+      '                        <button type="button" class="steps-assert-toggle" data-tree-collapsed="0" onclick="event.stopPropagation(); toggleAllStepAsserts(this)">\n' +
+      '                            <i class="fas fa-chevron-down"></i> 收起详细断言\n' +
+      '                        </button>\n' +
+      '                        <span class="steps-toolbar-hint">展开/收起下方步骤目录树（不展开内部节点）</span>\n' +
+      '                    </div>\n' +
+      '                    <div class="steps-tree">\n' +
+      '                    ${this.generateStepsHierarchy(test.steps)}\n' +
+      '                    </div>\n' +
+      '                </div>';
+    if (content.includes(stepsWrapNeedle)) {
+      content = content.replace(stepsWrapNeedle, stepsWrapReplacement);
+      patched = true;
+    } else {
+      console.warn('⚠️  patch #12 steps toolbar needle not found, skipping');
+    }
+
+    const stepItemOpenNeedle =
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}" style="padding-left: ${level * 20}px">\n';
+    const stepItemOpenReplacement =
+      '            const isAssertLeaf = !kids;\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}" style="padding-left: ${level * 20}px">\n';
+    if (content.includes(stepItemOpenNeedle) && !content.includes('step-assert-leaf')) {
+      content = content.replace(stepItemOpenNeedle, stepItemOpenReplacement);
+      patched = true;
+    }
+
+    const apiDetailsFlatNeedle =
+      '                        ${req.requestHeaders ? `<div class="api-section"><h5><i class="fas fa-arrow-up"></i> Request Headers</h5><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.requestHeaders, null, 2))}</pre></div>` : \'\'}\n' +
+      '                        ${req.requestBody ? `<div class="api-section"><h5><i class="fas fa-arrow-up"></i> Request Body</h5><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.requestBody))}</pre></div>` : \'\'}\n' +
+      '                        ${req.responseHeaders ? `<div class="api-section"><h5><i class="fas fa-arrow-down"></i> Response Headers</h5><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.responseHeaders, null, 2))}</pre></div>` : \'\'}\n' +
+      '                        ${req.responseBody ? `<div class="api-section"><h5><i class="fas fa-arrow-down"></i> Response Body</h5><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.responseBody))}</pre></div>` : \'\'}\n' +
+      '                        ${req.assertions && req.assertions.length ? `<div class="api-section"><h5><i class="fas fa-check-double"></i> Assertions</h5><ul class="api-assertions${req.assertionFailed ? \' failed\' : \'\'}">${req.assertions.map(a => `<li>${this.escapeHtml(String(a))}</li>`).join(\'\')}</ul></div>` : \'\'}';
+    const apiDetailsFoldReplacement =
+      '                        ${req.requestHeaders ? `<div class="api-section"><h5 class="api-section-toggle" onclick="toggleApiSection(this)"><i class="fas fa-chevron-right"></i><i class="fas fa-arrow-up"></i> Request Headers</h5><div class="api-section-body" style="display: none;"><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.requestHeaders, null, 2))}</pre></div></div>` : \'\'}\n' +
+      '                        ${req.requestBody ? `<div class="api-section"><h5 class="api-section-toggle" onclick="toggleApiSection(this)"><i class="fas fa-chevron-right"></i><i class="fas fa-arrow-up"></i> Request Body</h5><div class="api-section-body" style="display: none;"><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.requestBody))}</pre></div></div>` : \'\'}\n' +
+      '                        ${req.responseHeaders ? `<div class="api-section"><h5 class="api-section-toggle" onclick="toggleApiSection(this)"><i class="fas fa-chevron-right"></i><i class="fas fa-arrow-down"></i> Response Headers</h5><div class="api-section-body" style="display: none;"><pre class="api-payload">${this.escapeHtml(JSON.stringify(req.responseHeaders, null, 2))}</pre></div></div>` : \'\'}\n' +
+      '                        ${req.responseBody ? `<div class="api-section"><h5 class="api-section-toggle" onclick="toggleApiSection(this)"><i class="fas fa-chevron-${req.assertionFailed ? \'down\' : \'right\'}"></i><i class="fas fa-arrow-down"></i> Response Body</h5><div class="api-section-body"${req.assertionFailed ? \'\' : \' style="display: none;"\'}><pre class="api-payload">${this.escapeHtml(this.formatJsonSafe(req.responseBody))}</pre></div></div>` : \'\'}\n' +
+      '                        ${req.assertions && req.assertions.length ? `<div class="api-section"><h5 class="api-section-toggle" onclick="toggleApiSection(this)"><i class="fas fa-chevron-${req.assertionFailed ? \'down\' : \'right\'}"></i><i class="fas fa-check-double"></i> Assertions</h5><div class="api-section-body"${req.assertionFailed ? \'\' : \' style="display: none;"\'}><ul class="api-assertions${req.assertionFailed ? \' failed\' : \'\'}">${req.assertions.map(a => `<li>${this.escapeHtml(String(a))}</li>`).join(\'\')}</ul></div></div>` : \'\'}';
+    if (content.includes(apiDetailsFlatNeedle)) {
+      content = content.replace(apiDetailsFlatNeedle, apiDetailsFoldReplacement);
+      patched = true;
+    } else if (!content.includes('toggleApiSection(this)')) {
+      console.warn('⚠️  patch #12 api-section fold needle not found, skipping');
+    }
+
+    if (!content.includes('function toggleAllStepAsserts(')) {
+      const afterPassedGroup =
+        '        function toggleApiPassedGroup(headerEl) {\n' +
+        "            const group = headerEl.closest('.api-passed-group');\n" +
+        "            const body = group && group.querySelector('.api-passed-body');\n" +
+        "            const icon = headerEl.querySelector('i');\n" +
+        '            if (!body) return;\n' +
+        "            const open = body.style.display !== 'none';\n" +
+        "            body.style.display = open ? 'none' : 'block';\n" +
+        '            if (icon) {\n' +
+        "                icon.className = open ? 'fas fa-chevron-right' : 'fas fa-chevron-down';\n" +
+        '            }\n' +
+        '        }';
+      const withAssertToggles =
+        afterPassedGroup +
+        '\n' +
+        '        // patched: whole steps-tree module toggle + api-section toggles\n' +
+        '        function toggleAllStepAsserts(btn) {\n' +
+        "            const steps = btn.closest('.test-steps');\n" +
+        '            if (!steps) return;\n' +
+        "            const tree = steps.querySelector('.steps-tree');\n" +
+        '            if (!tree) return;\n' +
+        "            const collapsed = btn.getAttribute('data-tree-collapsed') === '1';\n" +
+        '            const nextCollapsed = !collapsed;\n' +
+        "            btn.setAttribute('data-tree-collapsed', nextCollapsed ? '1' : '0');\n" +
+        '            btn.innerHTML = nextCollapsed\n' +
+        "                ? '<i class=\"fas fa-chevron-right\"></i> 展开查看详细断言'\n" +
+        "                : '<i class=\"fas fa-chevron-down\"></i> 收起详细断言';\n" +
+        "            tree.style.display = nextCollapsed ? 'none' : 'block';\n" +
+        '        }\n' +
+        '        function toggleApiSection(headerEl) {\n' +
+        "            const section = headerEl.closest('.api-section');\n" +
+        "            const body = section && section.querySelector('.api-section-body');\n" +
+        "            const icon = headerEl.querySelector('.fa-chevron-right, .fa-chevron-down');\n" +
+        '            if (!body) return;\n' +
+        "            const open = body.style.display !== 'none';\n" +
+        "            body.style.display = open ? 'none' : 'block';\n" +
+        '            if (icon) {\n' +
+        "                icon.className = open ? 'fas fa-chevron-right' : 'fas fa-chevron-down';\n" +
+        '            }\n' +
+        '        }';
+      if (content.includes(afterPassedGroup)) {
+        content = content.replace(afterPassedGroup, withAssertToggles);
+        patched = true;
+      } else {
+        console.warn('⚠️  patch #12 toggle js needle not found, skipping');
+      }
+    }
+
+    if (!content.includes('patched: assert toolbar + api-section toggle')) {
+      const cssAnchor = '        .api-failed-group { margin-bottom: 8px; }\n';
+      const cssExtra =
+        '        .api-failed-group { margin-bottom: 8px; }\n' +
+        '        /* patched: assert toolbar + api-section toggle */\n' +
+        '        .steps-toolbar {\n' +
+        '            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;\n' +
+        '            margin: 0 0 10px 28px; padding: 8px 10px;\n' +
+        '            background: var(--md-surface); border: 1px solid var(--md-outline-variant);\n' +
+        '            border-radius: 6px;\n' +
+        '        }\n' +
+        '        .steps-assert-toggle {\n' +
+        '            border: 1px solid var(--md-outline); background: var(--md-surface-variant);\n' +
+        '            border-radius: 4px; padding: 4px 10px; font-size: 0.8rem; cursor: pointer;\n' +
+        '            display: inline-flex; align-items: center; gap: 6px;\n' +
+        '        }\n' +
+        '        .steps-assert-toggle:hover { background: var(--md-outline-variant); }\n' +
+        '        .steps-toolbar-hint { font-size: 0.75rem; color: rgba(0,0,0,0.5); }\n' +
+        '        body.darkmode .steps-toolbar-hint { color: rgba(255,255,255,0.5); }\n' +
+        '        .api-section-toggle {\n' +
+        '            cursor: pointer; display: flex; align-items: center; gap: 8px;\n' +
+        '            margin: 0; user-select: none;\n' +
+        '        }\n' +
+        '        .api-section-toggle:hover { opacity: 0.85; }\n' +
+        '        .api-section-body { margin-top: 8px; }\n';
+      if (content.includes(cssAnchor)) {
+        content = content.replace(cssAnchor, cssExtra);
+        patched = true;
+      }
+    }
+  }
+
+  // 14. 修复：通过断言叶子不再 display:none（否则父节点展开后内部空白）
+  if (content.includes('step-assert-pass') && content.includes('hidePassAssert')) {
+    const hidePassNeedle =
+      '            const isAssertLeaf = !kids;\n' +
+      '            const hidePassAssert = isAssertLeaf && step.status === \'passed\';\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}${hidePassAssert ? \' step-assert-pass\' : \'\'}" style="padding-left: ${level * 20}px${hidePassAssert ? \'; display: none\' : \'\'}">\n';
+    const hidePassReplacement =
+      '            const isAssertLeaf = !kids;\n' +
+      '            return `\n' +
+      '        <div class="step-item${hasFail ? \' has-fail\' : \'\'}${isAssertLeaf ? \' step-assert-leaf\' : \'\'}" style="padding-left: ${level * 20}px">\n';
+    if (content.includes(hidePassNeedle)) {
+      content = content.replace(hidePassNeedle, hidePassReplacement);
+      patched = true;
+    } else {
+      console.warn('⚠️  patch #14 hidePassAssert needle not found, skipping');
+    }
+  }
+
+  // 13. 升级：整体收起/展开 .steps-tree（只显隐模块，不展开内部节点）
+  if (
+    content.includes('function toggleAllStepAsserts(') &&
+    !content.includes('展开查看详细断言')
+  ) {
+    const toggleFnRe =
+      /        \/\/ patched: (?:assert leaf \+ (?:api-section|step tree \+ api-section) toggles|whole steps-tree module toggle \+ api-section toggles)\n        function toggleAllStepAsserts\(btn\) \{[\s\S]*?\n        \}/;
+    const newToggleFn =
+      '        // patched: whole steps-tree module toggle + api-section toggles\n' +
+      '        function toggleAllStepAsserts(btn) {\n' +
+      "            const steps = btn.closest('.test-steps');\n" +
+      '            if (!steps) return;\n' +
+      "            const tree = steps.querySelector('.steps-tree');\n" +
+      '            if (!tree) return;\n' +
+      "            const collapsed = btn.getAttribute('data-tree-collapsed') === '1';\n" +
+      '            const nextCollapsed = !collapsed;\n' +
+      "            btn.setAttribute('data-tree-collapsed', nextCollapsed ? '1' : '0');\n" +
+      '            btn.innerHTML = nextCollapsed\n' +
+      "                ? '<i class=\"fas fa-chevron-right\"></i> 展开查看详细断言'\n" +
+      "                : '<i class=\"fas fa-chevron-down\"></i> 收起详细断言';\n" +
+      "            tree.style.display = nextCollapsed ? 'none' : 'block';\n" +
+      '        }';
+    if (toggleFnRe.test(content)) {
+      content = content.replace(toggleFnRe, newToggleFn);
+      patched = true;
+    } else {
+      console.warn('⚠️  patch #13 toggle upgrade needle not found, skipping');
+    }
+
+    if (!content.includes('class="steps-tree"')) {
+      const hierarchyNeedle =
+        '                    </div>\n' +
+        '                    ${this.generateStepsHierarchy(test.steps)}\n' +
+        '                </div>';
+      const hierarchyReplacement =
+        '                    </div>\n' +
+        '                    <div class="steps-tree">\n' +
+        '                    ${this.generateStepsHierarchy(test.steps)}\n' +
+        '                    </div>\n' +
+        '                </div>';
+      if (content.includes(hierarchyNeedle)) {
+        content = content.replace(hierarchyNeedle, hierarchyReplacement);
+        patched = true;
+      } else {
+        console.warn('⚠️  patch #13 steps-tree wrap needle not found, skipping');
+      }
+    }
+
+    content = content
+      .replace(/data-asserts-collapsed="1"/g, 'data-tree-collapsed="0"')
+      .replace(/data-tree-collapsed="1"/g, 'data-tree-collapsed="0"')
+      .replace(
+        /onclick="(?:event\.stopPropagation\(\); )?toggleAllStepAsserts\(this\)"/g,
+        'onclick="event.stopPropagation(); toggleAllStepAsserts(this)"',
+      )
+      .replace(
+        /<i class="fas fa-chevron-(?:right|down)"><\/i> (?:展开全部|收起全部|展开查看详细断言|收起详细断言)/,
+        '<i class="fas fa-chevron-down"></i> 收起详细断言',
+      )
+      .replace(
+        /(?:整体展开\/收起下方步骤目录树|控制下方全部步骤分支与断言叶子|默认收起通过(?:的断言叶子；失败断言始终显示|分支与断言；失败分支始终展开))/g,
+        '展开/收起下方步骤目录树（不展开内部节点）',
+      );
+  }
+
   // 10. API Requests URL：去掉 60 字截断，完整展示 + wrap；title 保留作 hover
   if (!content.includes('patched: api-url show full')) {
     const apiUrlHtmlNeedle =
