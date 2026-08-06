@@ -6,6 +6,7 @@ import {
   pickGoods,
   pickNumber,
   asArray,
+  cleanupRefundMerchantOrder,
 } from '@shared';
 
 /**
@@ -79,6 +80,12 @@ test.describe('地址链路（依赖创建返回的 addressId）', () => {
           assertions: ['下单接口应返回业务 code'],
         }, Endpoints.goods.orderCreate, payload);
         expect(typeof body.code).toBe('number');
+        const createdOrderId = pickNumber(body.data, ['orderId', 'order_id', 'id']);
+        if (body.code === SUCCESS_CODE && createdOrderId && env.shopId) {
+          data.register(`退款清理地址链路订单 ${createdOrderId}`, async () => {
+            await cleanupRefundMerchantOrder(api, env.shopId!, createdOrderId);
+          });
+        }
       });
     }
   });

@@ -8,6 +8,7 @@ import {
   asArray,
   pickOrderRefundAmount,
   buildMerchantCloseOnlineRefundPayload,
+  cleanupRefundMerchantOrder,
 } from '@shared';
 
 /**
@@ -58,6 +59,7 @@ test.describe('固定课下单链路（绑定班级）', () => {
     mobileApi,
     env,
     publishedSampleGoods,
+    data,
   }) => {
     test.skip(!hasMobileCredential(), '未配置 C 端鉴权，跳过固定课购课/进班链路');
     expect(publishedSampleGoods.goodsType, 'fixture 应为固定课 goodsType=1').toBe(GOODS_TYPE_FIXED);
@@ -83,6 +85,11 @@ test.describe('固定课下单链路（绑定班级）', () => {
       orderId = pickNumber(body.data, ['orderId', 'order_id', 'id']);
       refundAmount = pickOrderRefundAmount(body.data);
       expect(orderItemId, '下单应返回 orderItemId').toBeTruthy();
+      if (orderId) {
+        data.register(`退款清理固定课订单 ${orderId}`, async () => {
+          await cleanupRefundMerchantOrder(api, env.shopId!, orderId!, refundAmount);
+        });
+      }
     });
 
     await test.step('订单详情：已支付且绑定班级信息', async () => {

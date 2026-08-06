@@ -3,6 +3,9 @@
  * 对齐 classinshop-go requests.RefundRequest / BookingRefundOption，
  * 以及商家端 BookingRefundModal 提交字段。
  */
+import type { ApiHelper } from '../fixtures/api-helper.js';
+import { Endpoints } from '../api/endpoints.js';
+import { SUCCESS_CODE } from '../http/types.js';
 
 /** 退款渠道：0 线上（原路退回） 1 线下 */
 export const REFUND_CHANNEL_ONLINE = 0;
@@ -175,4 +178,51 @@ export function buildAppointmentCloseOnlineRefundPayload(
       mode: BOOKING_REFUND_MODE_CANCEL,
     },
   });
+}
+
+/**
+ * 清理用：预约课商家退款（关闭课程·线上）。
+ * 已退完 / 预览失败时静默跳过，供 DataRegistry 幂等回收。
+ */
+export async function cleanupRefundAppointmentOrder(
+  api: ApiHelper,
+  shopId: string | number,
+  orderId: number,
+): Promise<void> {
+  if (!orderId) return;
+  const { body: previewBody } = await api.get(Endpoints.shopAdmin.refundBookingPreview(shopId), {
+    query: { orderId },
+  });
+  if (previewBody.code !== SUCCESS_CODE) return;
+  const preview = parseBookingRefundPreview(previewBody.data);
+  if (!preview || preview.maxRefundHours <= 0) return;
+  const payload = buildAppointmentCloseOnlineRefundPayload(preview, {
+    remark: '自动化测试清理-预约课退款（关闭课程·线上）',
+  });
+  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload);
+  if (body.code !== SUCCESS_CODE) {
+    throw new Error(`预约课清理退款失败 orderId=${orderId}: ${body.msg ?? ''}`);
+  }
+}
+
+/**
+ * 清理用：固定课等非预约课商家退款（关闭课程·线上）。
+ * 已退款时接口失败由 DataRegistry 忽略。
+ */
+export async function cleanupRefundMerchantOrder(
+  api: ApiHelper,
+  shopId: string | number,
+  orderId: number,
+  refundAmount = 0,
+): Promise<void> {
+  if (!orderId) return;
+  const payload = buildMerchantCloseOnlineRefundPayload({
+    orderId,
+    refundAmount,
+    remark: '自动化测试清理-订单退款（关闭课程·线上）',
+  });
+  const { body } = await api.post(Endpoints.shopAdmin.refundCreate(shopId), payload);
+  if (body.code !== SUCCESS_CODE) {
+    throw new Error(`订单清理退款失败 orderId=${orderId}: ${body.msg ?? ''}`);
+  }
 }
