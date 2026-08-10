@@ -41,7 +41,8 @@ interface CouponDetail {
   stockVoided: number;
   startTime: number;
   endTime: number;
-  allProductsApplicable: boolean;
+  allProductsApplicable?: boolean;
+  products?: Array<{ productID: number; goodsID: number; name: string }>;
 }
 
 interface CouponLanding {
@@ -277,7 +278,7 @@ test.describe('优惠券生命周期', () => {
         token: accounts.token,
         data: createPayload,
         logName: '请求日志-优惠券-创建.json',
-        assertions: ['商家端应能创建无门槛全店通用优惠券'],
+        assertions: ['商家端应能创建无门槛全部商品快照优惠券'],
       },
     );
     expect(created.body.code, '创建优惠券业务 code 应为成功码').toBe(SUCCESS_CODE);
@@ -297,7 +298,7 @@ test.describe('优惠券生命周期', () => {
       {
         token: accounts.token,
         logName: '请求日志-优惠券-商家详情.json',
-        assertions: ['商家详情应回显创建优惠券字段'],
+        assertions: ['商家详情应回显创建优惠券字段与适用商品快照'],
       },
     );
     expect(detail.body.code, '商家详情业务 code 应为成功码').toBe(SUCCESS_CODE);
@@ -306,7 +307,10 @@ test.describe('优惠券生命周期', () => {
     expect(detail.body.data?.rule.discountAmount, '商家详情应回显优惠金额').toBe(1);
     expect(detail.body.data?.stockTotal, '商家详情应回显总库存').toBe(1);
     expect(detail.body.data?.receiveLimitPerUser, '商家详情应回显每人限领').toBe(1);
-    expect(detail.body.data?.allProductsApplicable, '空 productIds 应表示全店通用').toBe(true);
+    expect(
+      (detail.body.data?.products ?? []).length,
+      '空 productIds 应快照写入创建时店铺全部上架 SKU',
+    ).toBeGreaterThan(0);
 
     const merchantList = await requestJson<CouponListData>(
       testInfo,
