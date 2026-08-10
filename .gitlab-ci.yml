@@ -51,17 +51,18 @@ stages:
   - test
   - maintain
 
-.cleanup_skip_when_reports_only: &cleanup_skip_when_reports_only
-  - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cleanup-reports"
-    when: never
+# 报告清理 Schedule（SCHEDULE_TASK=cleanup-reports）时跳过测试 Job
+.skip_on_cleanup_schedule:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cleanup-reports"
+      when: never
+    - when: on_success
 
 # 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
 prepare:
+  extends: .skip_on_cleanup_schedule
   stage: prepare
   image: ${PLAYWRIGHT_IMAGE}
-  rules:
-    - *cleanup_skip_when_reports_only
-    - when: on_success
   script:
     - |
       if [ "${CI_PIPELINE_SOURCE}" = "schedule" ]; then
@@ -145,11 +146,9 @@ prepare:
 
 # 单次 pipeline 只跑一个 Job：api + e2e 汇总到同一份 Enhanced / JUnit 报告，只发布一次、只通知一次。
 test-suite:
+  extends: .skip_on_cleanup_schedule
   stage: test
   image: ${PLAYWRIGHT_IMAGE}
-  rules:
-    - *cleanup_skip_when_reports_only
-    - when: on_success
   needs:
     - job: prepare
       artifacts: true
