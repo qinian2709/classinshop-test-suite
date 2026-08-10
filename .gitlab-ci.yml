@@ -41,10 +41,14 @@ workflow:
   rules:
     # 分支 13/14/im 推送时运行
     - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-    # 定时任务（夜间回归）运行
+    # 开发分支（含报告清理 Job）
+    - if: $CI_COMMIT_BRANCH == "test0616"
+    # 定时任务（夜间回归 / 报告清理）运行
     - if: $CI_PIPELINE_SOURCE == "schedule"
     # 合并请求运行（只跑接口冒烟）
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # 手动触发报告清理：Run pipeline + SCHEDULE_CLEANUP_REPORTS=1
+    - if: $CI_PIPELINE_SOURCE == "web" && $SCHEDULE_CLEANUP_REPORTS == "1"
 
 stages:
   - prepare
