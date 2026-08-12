@@ -22,7 +22,12 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅留 Artifacts）
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅 CI 内用于发布/索引，不入 GitLab Artifacts）
+#
+# 报告清理（classinshop-test-reports 无 Runner）：在 test-suite 建独立 Schedule
+#   SCHEDULE_TASK=cleanup-reports
+#   Cron 例：0 10 * * *（Asia/Shanghai 每天 10:00）
+#   复用 REPORT_PUBLISH_GIT_REPO + REPORT_PUBLISH_GIT_TOKEN；可选 RETENTION_DAYS=7
 #
 # 设计：一个 test-suite Job 内一次 playwright test，api + e2e 汇总到同一份 Enhanced 报告；
 # 避免 test-api / test-e2e 并行导致双报告、双企微通知。
@@ -36,17 +41,30 @@ workflow:
   rules:
     # 分支 13/14/im 推送时运行
     - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-    # 定时任务（夜间回归）运行
+    # 开发分支（含报告清理 Job）
+    - if: $CI_COMMIT_BRANCH == "test0616"
+    # 定时任务（夜间回归 / 报告清理）运行
     - if: $CI_PIPELINE_SOURCE == "schedule"
     # 合并请求运行（只跑接口冒烟）
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # 手动触发报告清理：Run pipeline + SCHEDULE_CLEANUP_REPORTS=1
+    - if: $CI_PIPELINE_SOURCE == "web" && $SCHEDULE_CLEANUP_REPORTS == "1"
 
 stages:
   - prepare
   - test
+  - maintain
+
+# 报告清理 Schedule（SCHEDULE_TASK=cleanup-reports）时跳过测试 Job
+.skip_on_cleanup_schedule:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cleanup-reports"
+      when: never
+    - when: on_success
 
 # 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
 prepare:
+  extends: .skip_on_cleanup_schedule
   stage: prepare
   image: ${PLAYWRIGHT_IMAGE}
   script:
@@ -132,6 +150,7 @@ prepare:
 
 # 单次 pipeline 只跑一个 Job：api + e2e 汇总到同一份 Enhanced / JUnit 报告，只发布一次、只通知一次。
 test-suite:
+  extends: .skip_on_cleanup_schedule
   stage: test
   image: ${PLAYWRIGHT_IMAGE}
   needs:
@@ -146,8 +165,26 @@ test-suite:
   artifacts:
     when: always
     expose_as: 'Enhanced Report'
+    # 仅保留 GitLab 测结果与报告回退链接所需文件；完整报告（含 attachments）走 Coolify 托管，避免整棵 reports/ 撑大项目存储。
     paths:
-      - reports/
+      - reports/latest/junit.xml
+      - reports/latest/publish.env
+      - reports/latest/enhanced/enhanced-report.html
     reports:
       junit: reports/latest/junit.xml
-    expire_in: 1 week
+    expire_in: 3 days
+
+# 清理 Coolify 报告仓中超过 RETENTION_DAYS 的目录（reports 项目无 CI Runner，由此 Job 执行）
+cleanup-published-reports:
+  stage: maintain
+  image: node:20-bookworm-slim
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $SCHEDULE_TASK == "cleanup-reports"
+    - if: $CI_PIPELINE_SOURCE == "web" && $SCHEDULE_CLEANUP_REPORTS == "1"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git >/dev/null
+    - corepack enable
+    - corepack prepare pnpm@${PNPM_VERSION} --activate
+    - pnpm install --frozen-lockfile
+  script:
+    - pnpm exec tsx scripts/cleanup-published-reports.ts

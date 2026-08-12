@@ -130,7 +130,34 @@ TEST_SUITE_PROJECTS=api
 
 ---
 
-## 7. 排查（执行配置相关）
+## 7. 报告过期清理（独立 Schedule）
+
+`classinshop-test-reports` 为静态托管仓，**无 Runner**；清理在 **本仓库** 执行。
+
+| 变量 | 必须？ | 作用 |
+|------|--------|------|
+| `SCHEDULE_TASK` | **是** | 设为 `cleanup-reports` 时只跑清理 Job，不跑测试 |
+| `RETENTION_DAYS` | 可选 | 默认 `7` |
+| `REPORT_PUBLISH_GIT_REPO` | **是** | 报告仓库 URL（同发布） |
+| `REPORT_PUBLISH_GIT_TOKEN` | **是** | push 权限 PAT（Masked） |
+| `SCHEDULE_CLEANUP_REPORTS` | Web 用 | Run pipeline 手动触发清理时设为 `1` |
+
+**新建 Schedule 示例**（每天 10:00 北京时间）：
+
+```text
+SCHEDULE_TASK=cleanup-reports
+RETENTION_DAYS=7
+REPORT_PUBLISH_GIT_REPO=https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git
+REPORT_PUBLISH_GIT_TOKEN=<masked，可与夜间回归共用>
+```
+
+Cron：`0 10 * * *`，Timezone：`Asia/Shanghai`。Target branch 用 test-suite 常用分支（如 `14`）。
+
+与夜间回归 **分开两条 Schedule**：一条 `SCHEDULE_TASK=cleanup-reports`，一条不配 `SCHEDULE_TASK`（跑测试）。
+
+---
+
+## 8. 排查（执行配置相关）
 
 | 现象 | 检查项 |
 |------|--------|
@@ -143,7 +170,7 @@ TEST_SUITE_PROJECTS=api
 
 ---
 
-## 8. 相关文档
+## 9. 相关文档
 
 | 文档 | 内容 |
 |------|------|
