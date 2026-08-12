@@ -22,7 +22,7 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅留 Artifacts）
+# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅 CI 内用于发布/索引，不入 GitLab Artifacts）
 #
 # 报告清理（classinshop-test-reports 无 Runner）：在 test-suite 建独立 Schedule
 #   SCHEDULE_TASK=cleanup-reports
@@ -165,11 +165,14 @@ test-suite:
   artifacts:
     when: always
     expose_as: 'Enhanced Report'
+    # 仅保留 GitLab 测结果与报告回退链接所需文件；完整报告（含 attachments）走 Coolify 托管，避免整棵 reports/ 撑大项目存储。
     paths:
-      - reports/
+      - reports/latest/junit.xml
+      - reports/latest/publish.env
+      - reports/latest/enhanced/enhanced-report.html
     reports:
       junit: reports/latest/junit.xml
-    expire_in: 1 week
+    expire_in: 3 days
 
 # 清理 Coolify 报告仓中超过 RETENTION_DAYS 的目录（reports 项目无 CI Runner，由此 Job 执行）
 cleanup-published-reports:
