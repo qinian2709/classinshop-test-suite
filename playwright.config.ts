@@ -40,6 +40,7 @@ export default defineConfig({
           overview: true,
           environment: false,
           metrics: false,
+          details: false,
           suites: true,
           charts: false,
           categories: false,

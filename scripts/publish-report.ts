@@ -206,7 +206,32 @@ function buildPublicUrl(baseUrl: string, relativeDir: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${relativeDir}/enhanced-report.html`;
 }
 
-/** Publish HTML + attachments only; detailed-report.json stays in CI Artifacts for index extraction. */
+function isJsonApiLogAttachment(fileName: string): boolean {
+  return fileName.toLowerCase().endsWith('.json');
+}
+
+/** Copy non-JSON attachments (screenshots, traces). API logs live in enhanced-report.html. */
+function copyBinaryAttachments(attachmentsSrc: string, attachmentsDest: string): { copied: number; skipped: number } {
+  let copied = 0;
+  let skipped = 0;
+
+  for (const entry of fs.readdirSync(attachmentsSrc, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    if (isJsonApiLogAttachment(entry.name)) {
+      skipped += 1;
+      continue;
+    }
+    if (copied === 0) {
+      fs.mkdirSync(attachmentsDest, { recursive: true });
+    }
+    fs.copyFileSync(path.join(attachmentsSrc, entry.name), path.join(attachmentsDest, entry.name));
+    copied += 1;
+  }
+
+  return { copied, skipped };
+}
+
+/** Publish HTML + binary attachments only; detailed-report.json stays in CI for index extraction. */
 function copyPublishableReport(sourceDir: string, destDir: string): void {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
@@ -218,11 +243,17 @@ function copyPublishableReport(sourceDir: string, destDir: string): void {
 
   const attachmentsSrc = path.join(sourceDir, 'attachments');
   if (fs.existsSync(attachmentsSrc)) {
-    fs.cpSync(attachmentsSrc, path.join(destDir, 'attachments'), { recursive: true });
+    const { copied, skipped } = copyBinaryAttachments(
+      attachmentsSrc,
+      path.join(destDir, 'attachments'),
+    );
+    console.error(
+      `[publish-report] Attachments: copied ${copied} binary file(s), skipped ${skipped} JSON API log(s) (embedded in HTML)`,
+    );
   }
 
   console.error(
-    '[publish-report] Staged enhanced-report.html + attachments (detailed-report.json excluded from hosting repo)',
+    '[publish-report] Staged enhanced-report.html (detailed-report.json excluded from hosting repo)',
   );
 }
 
