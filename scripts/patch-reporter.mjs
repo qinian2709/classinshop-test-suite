@@ -1221,6 +1221,45 @@ function main() {
     }
   }
 
+  // 15. Gate Test Details panel + nav (default off; API logs live in Test Suites)
+  if (!content.includes('dashboardWidgets.details')) {
+    const detailsWidgetNeedleRe =
+      /metrics: dashboardWidgets\.metrics == null \? true : dashboardWidgets\.metrics,\n        \};/;
+    const detailsWidgetReplacement =
+      'metrics: dashboardWidgets.metrics == null ? true : dashboardWidgets.metrics,\n' +
+      '            details: dashboardWidgets.details == null ? false : dashboardWidgets.details,\n' +
+      '        };';
+    if (!detailsWidgetNeedleRe.test(content)) {
+      console.warn('⚠️  patch #15 details widget needle not found, skipping');
+    } else {
+      content = content.replace(detailsWidgetNeedleRe, detailsWidgetReplacement);
+      patched = true;
+    }
+  }
+
+  if (!content.includes('w.details ? this.generateDetailsSection')) {
+    const detailsSectionNeedle = '${this.generateDetailsSection(testResults)}';
+    const detailsSectionReplacement = "${w.details ? this.generateDetailsSection(testResults) : ''}";
+    if (!content.includes(detailsSectionNeedle)) {
+      console.warn('⚠️  patch #15 details section needle not found, skipping');
+    } else {
+      content = content.replace(detailsSectionNeedle, detailsSectionReplacement);
+      patched = true;
+    }
+  }
+
+  if (!content.includes('w.details ? \'<li><a href="#details"')) {
+    const detailsNavNeedle = '<li><a href="#details" class="nav-link">Details</a></li>';
+    const detailsNavReplacement =
+      "${w.details ? '<li><a href=\"#details\" class=\"nav-link\">Details</a></li>' : ''}";
+    if (!content.includes(detailsNavNeedle)) {
+      console.warn('⚠️  patch #15 details nav needle not found, skipping');
+    } else {
+      content = content.replace(detailsNavNeedle, detailsNavReplacement);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
     console.log('✅ playwright-enhanced-reporter patched');
@@ -1282,19 +1321,31 @@ function main() {
 
   if (existsSync(typesPath)) {
     let typesContent = readFileSync(typesPath, 'utf-8');
-    if (!typesContent.includes('environment?: boolean;')) {
-      const oldInterface = `export interface DashboardWidgetConfig {
+    if (!typesContent.includes('details?: boolean;')) {
+      if (typesContent.includes('metrics?: boolean;') && !typesContent.includes('details?: boolean;')) {
+        typesContent = typesContent.replace(
+          'metrics?: boolean;',
+          'metrics?: boolean;\n    details?: boolean;',
+        );
+        writeFileSync(typesPath, typesContent, 'utf-8');
+        console.log('✅ playwright-enhanced-reporter types patched (details)');
+      } else if (!typesContent.includes('environment?: boolean;')) {
+        const oldInterface = `export interface DashboardWidgetConfig {
     overview?: boolean;`;
-      const newInterface = `export interface DashboardWidgetConfig {
+        const newInterface = `export interface DashboardWidgetConfig {
     overview?: boolean;
     environment?: boolean;
-    metrics?: boolean;`;
-      if (typesContent.includes(oldInterface)) {
-        typesContent = typesContent.replace(oldInterface, newInterface);
-        writeFileSync(typesPath, typesContent, 'utf-8');
-        console.log('✅ playwright-enhanced-reporter types patched');
+    metrics?: boolean;
+    details?: boolean;`;
+        if (typesContent.includes(oldInterface)) {
+          typesContent = typesContent.replace(oldInterface, newInterface);
+          writeFileSync(typesPath, typesContent, 'utf-8');
+          console.log('✅ playwright-enhanced-reporter types patched');
+        } else {
+          console.warn('⚠️  types patch needle not found, skipping');
+        }
       } else {
-        console.warn('⚠️  types patch needle not found, skipping');
+        console.warn('⚠️  types patch details needle not found, skipping');
       }
     }
   }
