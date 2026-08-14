@@ -1260,6 +1260,82 @@ function main() {
     }
   }
 
+  // 16. Details 隐藏时仍初始化 global-filters（否则 #details-table 缺失会 early-return）
+  if (!content.includes('patched: filters without Test Details table')) {
+    const initFiltersNeedle =
+      '        function initializeFilters() {\n' +
+      '            const table = document.querySelector(\'#details-table tbody\');\n' +
+      '            if (!table) return;\n' +
+      '            \n' +
+      '            const rows = Array.from(table.querySelectorAll(\'tr\'));';
+    const initFiltersReplacement =
+      '        function initializeFilters() {\n' +
+      '            const table = document.querySelector(\'#details-table tbody\');\n' +
+      '            const hasDetailsTable = !!table;\n' +
+      '            \n' +
+      '            if (!hasDetailsTable) {\n' +
+      '                // patched: filters without Test Details table\n' +
+      '                function filterSuitesPanel(searchValue, statusValue) {\n' +
+      '                    const suiteCards = document.querySelectorAll(\'#suites .suite-card\');\n' +
+      '                    suiteCards.forEach(card => {\n' +
+      '                        const items = card.querySelectorAll(\'.suite-test-item\');\n' +
+      '                        let visibleCount = 0;\n' +
+      '                        items.forEach(item => {\n' +
+      '                            const statusClass = Array.from(item.classList).find(c => c.indexOf(\'status-\') === 0) || \'\';\n' +
+      '                            const status = statusClass.replace(\'status-\', \'\');\n' +
+      '                            const nameEl = item.querySelector(\'.test-name\');\n' +
+      '                            const name = (nameEl && nameEl.textContent ? nameEl.textContent : \'\').toLowerCase();\n' +
+      '                            const matchesStatus = !statusValue || status.indexOf(statusValue) !== -1;\n' +
+      '                            const matchesSearch = !searchValue || name.indexOf(searchValue) !== -1;\n' +
+      '                            const show = matchesStatus && matchesSearch;\n' +
+      '                            item.style.display = show ? \'\' : \'none\';\n' +
+      '                            if (show) visibleCount++;\n' +
+      '                        });\n' +
+      '                        const filtering = !!(statusValue || searchValue);\n' +
+      '                        card.style.display = !filtering || visibleCount > 0 ? \'\' : \'none\';\n' +
+      '                        if (filtering && visibleCount > 0) {\n' +
+      '                            const tests = card.querySelector(\'.suite-tests\');\n' +
+      '                            if (tests) tests.style.display = \'block\';\n' +
+      '                            const header = card.querySelector(\'.suite-header\');\n' +
+      '                            if (header) header.classList.add(\'expanded\');\n' +
+      '                        }\n' +
+      '                    });\n' +
+      '                }\n' +
+      '                function applyFiltersSuitesOnly() {\n' +
+      '                    const searchValue = document.getElementById(\'search-input\').value.toLowerCase();\n' +
+      '                    const statusValue = document.getElementById(\'status-filter\').value.toLowerCase();\n' +
+      '                    filterSuitesPanel(searchValue, statusValue);\n' +
+      '                }\n' +
+      '                const searchInput = document.getElementById(\'search-input\');\n' +
+      '                const statusFilter = document.getElementById(\'status-filter\');\n' +
+      '                const clearBtn = document.getElementById(\'clear-filters\');\n' +
+      '                if (searchInput) searchInput.addEventListener(\'input\', applyFiltersSuitesOnly);\n' +
+      '                if (statusFilter) {\n' +
+      '                    statusFilter.addEventListener(\'change\', function() {\n' +
+      '                        if (typeof syncStatusFilterActiveState === \'function\') syncStatusFilterActiveState();\n' +
+      '                        applyFiltersSuitesOnly();\n' +
+      '                    });\n' +
+      '                }\n' +
+      '                if (clearBtn) {\n' +
+      '                    clearBtn.addEventListener(\'click\', function() {\n' +
+      '                        if (searchInput) searchInput.value = \'\';\n' +
+      '                        if (statusFilter) statusFilter.value = \'\';\n' +
+      '                        document.querySelectorAll(\'[data-status-filter]\').forEach(el => el.classList.remove(\'active\'));\n' +
+      '                        applyFiltersSuitesOnly();\n' +
+      '                    });\n' +
+      '                }\n' +
+      '                return;\n' +
+      '            }\n' +
+      '            \n' +
+      '            const rows = Array.from(table.querySelectorAll(\'tr\'));';
+    if (!content.includes(initFiltersNeedle)) {
+      console.warn('⚠️  patch #16 initFilters needle not found, skipping');
+    } else {
+      content = content.replace(initFiltersNeedle, initFiltersReplacement);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
     console.log('✅ playwright-enhanced-reporter patched');
