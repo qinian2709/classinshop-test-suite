@@ -28,6 +28,7 @@
 #   SCHEDULE_TASK=cleanup-reports
 #   Cron 例：0 10 * * *（Asia/Shanghai 每天 10:00）
 #   复用 REPORT_PUBLISH_GIT_REPO + REPORT_PUBLISH_GIT_TOKEN；可选 RETENTION_DAYS=7
+#   默认 SQUASH_GIT_HISTORY=1：删过期报告后压平 Git 历史并 force push（reports 仓 main 须允许 Maintainer force push）
 #
 # 设计：一个 test-suite Job 内一次 playwright test，api + e2e 汇总到同一份 Enhanced 报告；
 # 避免 test-api / test-e2e 并行导致双报告、双企微通知。

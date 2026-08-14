@@ -9,6 +9,7 @@
  * Env:
  *   REPORT_PUBLISH_GIT_REPO / REPORT_PUBLISH_GIT_TOKEN / REPORT_PUBLISH_GIT_BRANCH
  *   RETENTION_DAYS (default 7)
+ *   SQUASH_GIT_HISTORY (default on) — 清理后 orphan 压成单 commit 并 force push，避免 Git 历史无限涨
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -195,6 +196,63 @@ function pruneReportsIndex(index: ReportsIndex, deletedKeys: Set<string>): Repor
   };
 }
 
+function parseSquashGitHistory(): boolean {
+  const raw = process.env.SQUASH_GIT_HISTORY?.trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'no') return false;
+  return true;
+}
+
+function gitCommit(workDir: string, message: string, env: NodeJS.ProcessEnv): void {
+  runCommand(
+    'git',
+    [
+      '-c',
+      `user.name=${env.GIT_AUTHOR_NAME}`,
+      '-c',
+      `user.email=${env.GIT_AUTHOR_EMAIL}`,
+      'commit',
+      '-m',
+      message,
+    ],
+    workDir,
+    env,
+  );
+}
+
+/** Replace branch history with one commit containing the current tree (bounded repo size). */
+function squashAndForcePush(
+  workDir: string,
+  gitBranch: string,
+  message: string,
+  env: NodeJS.ProcessEnv,
+): void {
+  console.error('[cleanup-reports] Squashing to single commit (orphan) and force-pushing...');
+  runCommand('git', ['checkout', '--orphan', 'report-snapshot'], workDir, env);
+  runCommand('git', ['add', '-A'], workDir, env);
+  gitCommit(workDir, message, env);
+  runCommand('git', ['branch', '-M', gitBranch], workDir, env);
+  runCommand('git', ['push', '--force', 'origin', gitBranch], workDir, env);
+  console.error(`[cleanup-reports] Force-pushed squashed ${gitBranch} (old history dropped on remote).`);
+}
+
+function pushCleanupCommit(
+  workDir: string,
+  gitBranch: string,
+  retentionDays: number,
+  env: NodeJS.ProcessEnv,
+  squash: boolean,
+): void {
+  const message = `chore: prune reports older than ${retentionDays} days`;
+  runCommand('git', ['add', '-A'], workDir, env);
+  if (squash) {
+    squashAndForcePush(workDir, gitBranch, message, env);
+    return;
+  }
+  gitCommit(workDir, message, env);
+  runCommand('git', ['push', 'origin', gitBranch], workDir, env);
+  console.error(`[cleanup-reports] Pushed cleanup commit to ${gitBranch}.`);
+}
+
 function cleanupReports(workDir: string, retentionDays: number, dryRun: boolean): boolean {
   const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
   const cutoffIso = new Date(cutoffMs).toISOString();
@@ -265,6 +323,7 @@ function main(): number {
   const gitToken = process.env.REPORT_PUBLISH_GIT_TOKEN?.trim();
   const gitBranch = process.env.REPORT_PUBLISH_GIT_BRANCH?.trim() || 'main';
   const retentionDays = Number(readArg(process.argv.slice(2), '--days') ?? process.env.RETENTION_DAYS ?? '7');
+  const squashHistory = parseSquashGitHistory();
 
   if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
     console.error('[cleanup-reports] Invalid RETENTION_DAYS');
@@ -308,23 +367,7 @@ function main(): number {
       return 0;
     }
 
-    runCommand('git', ['add', '-A'], workDir, env);
-    runCommand(
-      'git',
-      [
-        '-c',
-        `user.name=${env.GIT_AUTHOR_NAME}`,
-        '-c',
-        `user.email=${env.GIT_AUTHOR_EMAIL}`,
-        'commit',
-        '-m',
-        `chore: prune reports older than ${retentionDays} days`,
-      ],
-      workDir,
-      env,
-    );
-    runCommand('git', ['push', 'origin', gitBranch], workDir, env);
-    console.error(`[cleanup-reports] Pushed cleanup commit to ${gitBranch}.`);
+    pushCleanupCommit(workDir, gitBranch, retentionDays, env, squashHistory);
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
