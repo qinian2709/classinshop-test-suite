@@ -9,8 +9,6 @@
  * Env:
  *   REPORT_PUBLISH_GIT_REPO / REPORT_PUBLISH_GIT_TOKEN / REPORT_PUBLISH_GIT_BRANCH
  *   RETENTION_DAYS (default 7)
- *   SQUASH_GIT_HISTORY (default off) — 设为 1 时清理 push 用 orphan 压历史并 force push；
- *     日常 Schedule 清理用普通 commit 即可；squash 可能加重 GitLab 负载且 gc 前体积不降
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -113,41 +111,11 @@ function indexMap(index: ReportsIndex): Map<string, ReportIndexEntry> {
   return map;
 }
 
-function readPublishedAtFromGit(
-  workDir: string,
-  relativePath: string,
-  env: NodeJS.ProcessEnv,
-): number | undefined {
-  const result = spawnSync(
-    'git',
-    ['log', '-1', '--format=%cI', '--', relativePath],
-    { cwd: workDir, encoding: 'utf8', env },
-  );
-  if ((result.status ?? 1) !== 0) return undefined;
-  const raw = result.stdout?.trim();
-  if (!raw) return undefined;
-  const ms = Date.parse(raw);
-  return Number.isNaN(ms) ? undefined : ms;
-}
-
-/** Never use file mtime after clone — checkout resets mtimes and makes old reports look fresh. */
-function readPublishedAtMs(
-  workDir: string,
-  pipelineDir: string,
-  entry: ReportIndexEntry | undefined,
-  env: NodeJS.ProcessEnv,
-): number {
+function readPublishedAtMs(workDir: string, pipelineDir: string, entry?: ReportIndexEntry): number {
   if (entry?.publishedAt) {
     const ms = Date.parse(entry.publishedAt);
     if (!Number.isNaN(ms)) return ms;
   }
-
-  const htmlRel = path
-    .relative(workDir, path.join(pipelineDir, 'enhanced', 'enhanced-report.html'))
-    .split(path.sep)
-    .join('/');
-  const gitMs = readPublishedAtFromGit(workDir, htmlRel, env);
-  if (gitMs !== undefined) return gitMs;
 
   const detailedPath = path.join(pipelineDir, 'enhanced', 'detailed-report.json');
   if (fs.existsSync(detailedPath)) {
@@ -165,8 +133,12 @@ function readPublishedAtMs(
     }
   }
 
-  // Unknown age → treat as expired so orphan dirs without index metadata get removed.
-  return 0;
+  const htmlPath = path.join(pipelineDir, 'enhanced', 'enhanced-report.html');
+  if (fs.existsSync(htmlPath)) {
+    return fs.statSync(htmlPath).mtimeMs;
+  }
+
+  return fs.statSync(pipelineDir).mtimeMs;
 }
 
 function findReportDirs(workDir: string): string[] {
@@ -223,63 +195,7 @@ function pruneReportsIndex(index: ReportsIndex, deletedKeys: Set<string>): Repor
   };
 }
 
-function parseSquashGitHistory(): boolean {
-  const raw = process.env.SQUASH_GIT_HISTORY?.trim().toLowerCase();
-  if (raw === '1' || raw === 'true' || raw === 'on' || raw === 'yes') return true;
-  return false;
-}
-
-function gitCommit(workDir: string, message: string, env: NodeJS.ProcessEnv): void {
-  runCommand(
-    'git',
-    [
-      '-c',
-      `user.name=${env.GIT_AUTHOR_NAME}`,
-      '-c',
-      `user.email=${env.GIT_AUTHOR_EMAIL}`,
-      'commit',
-      '-m',
-      message,
-    ],
-    workDir,
-    env,
-  );
-}
-
-/** Replace branch history with one commit containing the current tree (bounded repo size). */
-function squashAndForcePush(
-  workDir: string,
-  gitBranch: string,
-  message: string,
-  env: NodeJS.ProcessEnv,
-): void {
-  console.error('[cleanup-reports] Squashing to single commit (orphan) and force-pushing...');
-  runCommand('git', ['checkout', '--orphan', 'report-snapshot'], workDir, env);
-  runCommand('git', ['add', '-A'], workDir, env);
-  gitCommit(workDir, message, env);
-  runCommand('git', ['branch', '-M', gitBranch], workDir, env);
-  runCommand('git', ['push', '--force', 'origin', gitBranch], workDir, env);
-  console.error(`[cleanup-reports] Force-pushed squashed ${gitBranch} (old history dropped on remote).`);
-}
-
-function pushCleanupCommit(
-  workDir: string,
-  gitBranch: string,
-  retentionDays: number,
-  env: NodeJS.ProcessEnv,
-  squash: boolean,
-): void {
-  const message = `chore: prune reports older than ${retentionDays} days`;
-  runCommand('git', ['add', '-A'], workDir, env);
-  if (squash) {
-    squashAndForcePush(workDir, gitBranch, message, env);
-    return;
-  }
-  gitCommit(workDir, message, env);
-  runCommand('git', ['push', 'origin', gitBranch], workDir, env);
-  console.error(`[cleanup-reports] Pushed cleanup commit to ${gitBranch}.`);
-}
-
+/** Remove legacy JSON API logs; publish-report no longer pushes them (logs live in HTML). */
 function stripJsonAttachments(workDir: string, dryRun: boolean): number {
   let removed = 0;
 
@@ -305,52 +221,13 @@ function stripJsonAttachments(workDir: string, dryRun: boolean): number {
 
   if (removed > 0) {
     console.error(
-      `[cleanup-reports] ${dryRun ? 'Would remove' : 'Removed'} ${removed} JSON attachment(s) (logs are in HTML).`,
+      `[cleanup-reports] ${dryRun ? 'Would remove' : 'Removed'} ${removed} JSON attachment(s).`,
     );
   }
   return removed;
 }
 
-function pruneStaleIndexEntries(workDir: string, retentionDays: number, dryRun: boolean): number {
-  const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
-  const index = loadReportsIndex(workDir);
-  const kept: ReportIndexEntry[] = [];
-  let pruned = 0;
-
-  for (const item of index.reports) {
-    const htmlPath = path.join(workDir, item.path);
-    const publishedMs = item.publishedAt ? Date.parse(item.publishedAt) : Number.NaN;
-    const expired = !Number.isNaN(publishedMs) && publishedMs < cutoffMs;
-    const missing = !fs.existsSync(htmlPath);
-
-    if (expired || missing) {
-      pruned += 1;
-      console.error(
-        `[cleanup-reports] ${dryRun ? 'would prune index' : 'prune index'} ${item.env}/${item.target}/${item.pipelineId}${missing ? ' (missing file)' : ''}`,
-      );
-      continue;
-    }
-    kept.push(item);
-  }
-
-  if (!dryRun && pruned > 0) {
-    fs.writeFileSync(
-      path.join(workDir, REPORTS_INDEX_FILE),
-      `${JSON.stringify({ updatedAt: new Date().toISOString(), reports: kept }, null, 2)}\n`,
-      'utf8',
-    );
-    console.error(`[cleanup-reports] Index entries: ${index.reports.length} -> ${kept.length}`);
-  }
-
-  return pruned;
-}
-
-function cleanupExpiredReports(
-  workDir: string,
-  retentionDays: number,
-  dryRun: boolean,
-  gitEnvVars: NodeJS.ProcessEnv,
-): number {
+function cleanupReports(workDir: string, retentionDays: number, dryRun: boolean): boolean {
   const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
   const cutoffIso = new Date(cutoffMs).toISOString();
   const index = loadReportsIndex(workDir);
@@ -367,11 +244,11 @@ function cleanupExpiredReports(
     const parts = relative.split('/');
     if (parts.length < 3) continue;
 
-    const [envName, target, pipelineId] = parts;
-    if (!envName || !target || !pipelineId) continue;
-    const key = reportKey(envName, target, pipelineId);
+    const [env, target, pipelineId] = parts;
+    if (!env || !target || !pipelineId) continue;
+    const key = reportKey(env, target, pipelineId);
     const entry = byKey.get(key);
-    const publishedAtMs = readPublishedAtMs(workDir, pipelineDir, entry, gitEnvVars);
+    const publishedAtMs = readPublishedAtMs(workDir, pipelineDir, entry);
 
     if (publishedAtMs >= cutoffMs) continue;
 
@@ -385,7 +262,8 @@ function cleanupExpiredReports(
   expired.sort((a, b) => a.publishedAt.localeCompare(b.publishedAt));
 
   if (expired.length === 0) {
-    console.error('[cleanup-reports] No expired report trees.');
+    console.error('[cleanup-reports] No expired reports.');
+    return false;
   }
 
   for (const item of expired) {
@@ -397,7 +275,7 @@ function cleanupExpiredReports(
     removeEmptyParents(path.dirname(pipelineDir), workDir);
   }
 
-  if (!dryRun && expired.length > 0) {
+  if (!dryRun) {
     const nextIndex = pruneReportsIndex(index, deletedKeys);
     fs.writeFileSync(
       path.join(workDir, REPORTS_INDEX_FILE),
@@ -405,22 +283,12 @@ function cleanupExpiredReports(
       'utf8',
     );
     console.error(
-      `[cleanup-reports] Index pruned: ${index.reports.length} -> ${nextIndex.reports.length} entries`,
+      `[cleanup-reports] Index pruned: ${index.reports.length} -> ${nextIndex.reports.length} entries (metadata preserved)`,
     );
   }
 
-  if (expired.length > 0) {
-    console.error(`[cleanup-reports] ${dryRun ? 'Would remove' : 'Removed'} ${expired.length} report tree(s).`);
-  }
-  return expired.length;
-}
-
-function hasWorkingTreeChanges(workDir: string, env: NodeJS.ProcessEnv): boolean {
-  const status = spawnSync('git', ['status', '--porcelain'], { cwd: workDir, encoding: 'utf8', env });
-  if ((status.status ?? 1) !== 0) {
-    throw new Error('git status failed');
-  }
-  return Boolean(status.stdout?.trim());
+  console.error(`[cleanup-reports] ${dryRun ? 'Would remove' : 'Removed'} ${expired.length} report tree(s).`);
+  return !dryRun;
 }
 
 function main(): number {
@@ -429,7 +297,6 @@ function main(): number {
   const gitToken = process.env.REPORT_PUBLISH_GIT_TOKEN?.trim();
   const gitBranch = process.env.REPORT_PUBLISH_GIT_BRANCH?.trim() || 'main';
   const retentionDays = Number(readArg(process.argv.slice(2), '--days') ?? process.env.RETENTION_DAYS ?? '7');
-  const squashHistory = parseSquashGitHistory();
 
   if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
     console.error('[cleanup-reports] Invalid RETENTION_DAYS');
@@ -452,26 +319,45 @@ function main(): number {
     console.error(`[cleanup-reports] clone ${gitRepo} (branch ${gitBranch})`);
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT, env);
 
-    const deletedReports = cleanupExpiredReports(workDir, retentionDays, dryRun, env);
-    const strippedJson = stripJsonAttachments(workDir, dryRun);
-    const prunedIndex = pruneStaleIndexEntries(workDir, retentionDays, dryRun);
+    const reportsChanged = cleanupReports(workDir, retentionDays, dryRun);
+    const jsonRemoved = stripJsonAttachments(workDir, dryRun);
 
     if (dryRun) {
-      console.error(
-        `[cleanup-reports] dry-run summary: reports=${deletedReports} json=${strippedJson} index=${prunedIndex}`,
-      );
       console.error('[cleanup-reports] dry-run complete; no push.');
       return 0;
     }
 
-    const treeChanged = hasWorkingTreeChanges(workDir, env);
-
-    if (!treeChanged) {
+    if (!reportsChanged && jsonRemoved === 0) {
       console.error('[cleanup-reports] No changes to commit.');
       return 0;
     }
 
-    pushCleanupCommit(workDir, gitBranch, retentionDays, env, squashHistory);
+    const status = spawnSync('git', ['status', '--porcelain'], { cwd: workDir, encoding: 'utf8', env });
+    if ((status.status ?? 1) !== 0) {
+      throw new Error('git status failed');
+    }
+    if (!status.stdout?.trim()) {
+      console.error('[cleanup-reports] No git changes after cleanup.');
+      return 0;
+    }
+
+    runCommand('git', ['add', '-A'], workDir, env);
+    runCommand(
+      'git',
+      [
+        '-c',
+        `user.name=${env.GIT_AUTHOR_NAME}`,
+        '-c',
+        `user.email=${env.GIT_AUTHOR_EMAIL}`,
+        'commit',
+        '-m',
+        `chore: prune reports older than ${retentionDays} days`,
+      ],
+      workDir,
+      env,
+    );
+    runCommand('git', ['push', 'origin', gitBranch], workDir, env);
+    console.error(`[cleanup-reports] Pushed cleanup commit to ${gitBranch}.`);
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
