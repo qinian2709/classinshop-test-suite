@@ -33,6 +33,17 @@ export interface WeComNotifyInput {
   jobName?: string;
 }
 
+/** GitLab Pipeline 页（优先用 projectUrl + pipelineId 拼，避免 CI_PIPELINE_URL 缺失或不准）。 */
+export function buildGitLabPipelineUrl(
+  projectUrl = process.env.CI_PROJECT_URL?.trim(),
+  pipelineId = process.env.CI_PIPELINE_ID?.trim(),
+): string | undefined {
+  if (projectUrl && pipelineId) {
+    return `${projectUrl.replace(/\/$/, '')}/-/pipelines/${pipelineId}`;
+  }
+  return process.env.CI_PIPELINE_URL?.trim() || undefined;
+}
+
 /** GitLab Job 页（Artifacts 入口）。 */
 export function buildGitLabJobUrl(
   projectUrl = process.env.CI_PROJECT_URL?.trim(),
@@ -65,6 +76,18 @@ export interface ReportLinks {
   artifactsBrowse?: string;
   job?: string;
   localPath?: string;
+  pipelineId?: string;
+  pipelineIid?: string;
+}
+
+interface PublishEnvContext {
+  enhancedReportUrl?: string;
+  pipelineUrl?: string;
+  pipelineId?: string;
+  pipelineIid?: string;
+  jobId?: string;
+  artifactBrowseUrl?: string;
+  jobUrl?: string;
 }
 
 function isHttpUrl(value: string | undefined): value is string {
@@ -73,11 +96,20 @@ function isHttpUrl(value: string | undefined): value is string {
 
 const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 
-function readPublishedReportUrl(): string | undefined {
-  if (!fs.existsSync(PUBLISH_ENV_FILE)) return undefined;
+function readPublishEnv(): PublishEnvContext {
+  if (!fs.existsSync(PUBLISH_ENV_FILE)) return {};
   const parsed = dotenv.parse(fs.readFileSync(PUBLISH_ENV_FILE));
-  const url = parsed.ENHANCED_REPORT_URL?.trim();
-  return url && url.startsWith('http') ? url : undefined;
+  const enhancedReportUrl = parsed.ENHANCED_REPORT_URL?.trim();
+  return {
+    enhancedReportUrl:
+      enhancedReportUrl && enhancedReportUrl.startsWith('http') ? enhancedReportUrl : undefined,
+    pipelineUrl: parsed.CI_PIPELINE_URL?.trim(),
+    pipelineId: parsed.CI_PIPELINE_ID?.trim(),
+    pipelineIid: parsed.CI_PIPELINE_IID?.trim(),
+    jobId: parsed.CI_JOB_ID?.trim(),
+    artifactBrowseUrl: parsed.ARTIFACT_BROWSE_URL?.trim(),
+    jobUrl: parsed.CI_JOB_URL?.trim(),
+  };
 }
 
 function parsePublishWaitSeconds(): number {
@@ -87,7 +119,7 @@ function parsePublishWaitSeconds(): number {
     const parsed = Number(raw);
     if (Number.isFinite(parsed) && parsed >= 0) return parsed;
   }
-  return readPublishedReportUrl() ? 30 : 0;
+  return readPublishEnv().enhancedReportUrl ? 30 : 0;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -126,42 +158,59 @@ async function waitForPublishedReport(reportUrl: string, maxWaitSeconds: number)
 }
 
 export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
-  const published = readPublishedReportUrl();
-  if (published) {
-    return { enhanced: published };
-  }
+  const publishEnv = readPublishEnv();
+  const jobId = publishEnv.jobId || process.env.CI_JOB_ID?.trim();
+  const pipelineId = publishEnv.pipelineId || process.env.CI_PIPELINE_ID?.trim();
+  const pipelineIid = publishEnv.pipelineIid || process.env.CI_PIPELINE_IID?.trim();
 
   const explicit = (process.env.ENHANCED_REPORT_URL ?? input.enhancedReportUrl)?.trim();
-  const enhanced = isHttpUrl(explicit) && !explicit.includes('/artifacts/') ? explicit : undefined;
-  const artifactsBrowse = enhanced ? undefined : buildGitLabArtifactsBrowseUrl();
-  const job = enhanced ? undefined : input.jobUrl?.trim() || buildGitLabJobUrl() || process.env.CI_JOB_URL?.trim();
+  const enhanced =
+    publishEnv.enhancedReportUrl ||
+    (isHttpUrl(explicit) && !explicit.includes('/artifacts/') ? explicit : undefined);
+
+  const artifactsBrowse =
+    (publishEnv.artifactBrowseUrl && isHttpUrl(publishEnv.artifactBrowseUrl)
+      ? publishEnv.artifactBrowseUrl
+      : undefined) || buildGitLabArtifactsBrowseUrl(undefined, jobId);
+
+  const job =
+    input.jobUrl?.trim() ||
+    publishEnv.jobUrl ||
+    buildGitLabJobUrl(undefined, jobId) ||
+    process.env.CI_JOB_URL?.trim();
+
   const localCandidate = input.enhancedReportUrl?.trim();
   const localPath =
     localCandidate && !isHttpUrl(localCandidate) && fs.existsSync(localCandidate)
       ? localCandidate
       : undefined;
 
-  return { enhanced, artifactsBrowse, job, localPath };
+  return { enhanced, artifactsBrowse, job, localPath, pipelineId, pipelineIid };
 }
 
 function formatReportSection(links: ReportLinks): string[] {
-  const reportUrl = links.enhanced ?? links.artifactsBrowse;
-  if (!reportUrl) {
-    if (links.localPath) {
-      const relative = path.relative(ROOT, links.localPath) || links.localPath;
-      return ['**测试报告**', `本地路径：${colorize(relative, 'comment')}`];
-    }
-    if (links.job) {
-      return ['**测试报告**', `[打开 Job 查看产物](${links.job})`];
-    }
-    return [
-      '**测试报告**',
-      colorize('暂无在线报告链接。请先执行 publish-report 或本地 pnpm report:enhanced', 'comment'),
-    ];
+  const lines = ['**测试报告**'];
+
+  if (links.enhanced) {
+    lines.push(`[在线最新报告](${links.enhanced})`);
+    return lines;
   }
 
-  const label = reportUrl.includes('/artifacts/') ? 'Artifacts 报告目录' : '在线测试报告';
-  return ['**测试报告**', `[${label}](${reportUrl})`];
+  const fallback = links.artifactsBrowse ?? links.job;
+  if (fallback) {
+    const label = links.artifactsBrowse ? 'Artifacts 报告目录' : '打开 Job 查看产物';
+    lines.push(`[${label}](${fallback})`);
+    return lines;
+  }
+
+  if (links.localPath) {
+    const relative = path.relative(ROOT, links.localPath) || links.localPath;
+    lines.push(`本地路径：${colorize(relative, 'comment')}`);
+    return lines;
+  }
+
+  lines.push(colorize('暂无在线报告链接。请先执行 publish-report 或本地 pnpm report:enhanced', 'comment'));
+  return lines;
 }
 
 function colorize(value: number | string, tone: 'info' | 'comment' | 'warning'): string {
@@ -207,7 +256,22 @@ function formatResultBlock(summary: JUnitSummary | null, status: '通过' | '失
 }
 
 function resolvePipelineUrl(input: WeComNotifyInput): string | undefined {
-  return input.pipelineUrl?.trim() || process.env.CI_PIPELINE_URL?.trim() || undefined;
+  const publishEnv = readPublishEnv();
+  return (
+    input.pipelineUrl?.trim() ||
+    publishEnv.pipelineUrl ||
+    buildGitLabPipelineUrl() ||
+    undefined
+  );
+}
+
+function formatPipelineRef(
+  pipelineUrl: string,
+  pipelineIid?: string,
+  pipelineId?: string,
+): string {
+  const label = pipelineIid ? `#${pipelineIid}` : pipelineId ? pipelineId : '详情';
+  return `[${label}](${pipelineUrl})`;
 }
 
 function readNumberAttr(attrs: string, name: keyof JUnitSummary): number {
@@ -249,6 +313,8 @@ export function buildWeComMarkdown(input: WeComNotifyInput): string {
   const icon = status === '通过' ? '✅' : status === '跳过' ? '⏭️' : '❌';
   const reportLinks = resolveReportLinks(input);
   const pipelineUrl = resolvePipelineUrl(input);
+  const pipelineIid = reportLinks.pipelineIid;
+  const pipelineId = reportLinks.pipelineId;
 
   const sections: string[] = [`## ${icon} ClassInShop 测试${status}`, '', ...formatReportSection(reportLinks)];
 
@@ -256,6 +322,9 @@ export function buildWeComMarkdown(input: WeComNotifyInput): string {
     `> **环境**：${input.testEnv}`,
     `> **目标**：${input.target}`,
   ];
+  if (pipelineUrl) {
+    metaLines.push(`> **流水线**：${formatPipelineRef(pipelineUrl, pipelineIid, pipelineId)}`);
+  }
   if (input.jobName) metaLines.push(`> **Job**：${input.jobName}`);
   if (input.projectName) metaLines.push(`> **项目**：${input.projectName}`);
   if (input.refName) metaLines.push(`> **分支/Tag**：${input.refName}`);
@@ -264,9 +333,6 @@ export function buildWeComMarkdown(input: WeComNotifyInput): string {
 
   if (input.allureReportGenerated && input.allureReportUrl?.startsWith('http')) {
     sections.push('', `[Allure 报告](${input.allureReportUrl})`);
-  }
-  if (pipelineUrl) {
-    sections.push('', `[流水线详情](${pipelineUrl})`);
   }
 
   return sections.join('\n');
