@@ -3,8 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildGitLabArtifactsBrowseUrl } from './wecom-notify.js';
+import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const LATEST_SEGMENT = 'latest';
 
 interface PublishOptions {
   testEnv: string;
@@ -30,6 +33,12 @@ Environment (CI/CD Variables):
   REPORT_PUBLISH_RSYNC_TARGET      rsync 目标目录
   REPORT_PUBLISH_SSH_PRIVATE_KEY   （可选）rsync SSH 私钥
   REPORT_PUBLISH_LOCAL_DIR         （可选）本机目录拷贝
+  REPORT_PUBLISH_SLIM              默认 1：托管版去掉通过用例 API body；设 0 关闭
+  REPORT_INDEX_HISTORY_LIMIT       每个 env+target 索引保留最近 N 次（默认 30，仅元数据+外链）
+
+发布策略:
+  报告 HTML 固定覆盖 {env}/{target}/latest/enhanced/；删除同槽位下旧 pipelineId 目录。
+  历史完整报告见 GitLab Job Artifacts（索引记录 jobId / artifactUrl）。
 
 Outputs:
   reports/latest/publish.env       ENHANCED_REPORT_URL=...（供企微通知读取）
@@ -62,11 +71,20 @@ function resolveSourceDir(source: string): string {
   return absolute;
 }
 
-function buildRelativePath(options: PublishOptions): string {
-  const env = sanitizeSegment(options.testEnv);
-  const target = sanitizeSegment(options.target);
-  const pipeline = sanitizeSegment(options.pipelineId);
-  return `${env}/${target}/${pipeline}/enhanced`;
+function buildLatestRelativePath(testEnv: string, target: string): string {
+  const env = sanitizeSegment(testEnv);
+  const targetSegment = sanitizeSegment(target);
+  return `${env}/${targetSegment}/${LATEST_SEGMENT}/enhanced`;
+}
+
+function buildLatestReportHtmlPath(testEnv: string, target: string): string {
+  return `${buildLatestRelativePath(testEnv, target)}/enhanced-report.html`;
+}
+
+function buildSlotPrefix(testEnv: string, target: string): string {
+  const env = sanitizeSegment(testEnv);
+  const targetSegment = sanitizeSegment(target);
+  return `${env}/${targetSegment}`;
 }
 
 const REPORTS_INDEX_FILE = 'reports-index.json';
@@ -84,12 +102,16 @@ interface ReportIndexEntry {
   env: string;
   target: string;
   pipelineId: string;
-  path: string;
+  jobId?: string;
+  /** 仅 isLatest 条目：托管站 enhanced-report.html 路径 */
+  path?: string;
   publishedAt: string;
   branch?: string;
   author?: string;
   buildUrl?: string;
+  artifactUrl?: string;
   ref?: string;
+  isLatest?: boolean;
   summary?: ReportSummary;
 }
 
@@ -98,19 +120,34 @@ interface ReportsIndex {
   reports: ReportIndexEntry[];
 }
 
+function resolveBuildUrl(ciBuildUrl?: string): string | undefined {
+  return ciBuildUrl?.trim() || process.env.CI_PIPELINE_URL?.trim() || undefined;
+}
+
+function resolveArtifactUrl(): string | undefined {
+  return buildGitLabArtifactsBrowseUrl();
+}
+
+function resolveJobId(): string | undefined {
+  return process.env.CI_JOB_ID?.trim() || undefined;
+}
+
 function readReportIndexEntry(sourceDir: string, options: PublishOptions): ReportIndexEntry {
   const env = sanitizeSegment(options.testEnv);
   const target = sanitizeSegment(options.target);
   const pipelineId = sanitizeSegment(options.pipelineId);
-  const relativeDir = buildRelativePath(options);
 
   const entry: ReportIndexEntry = {
     env,
     target,
     pipelineId,
-    path: `${relativeDir}/enhanced-report.html`,
+    jobId: resolveJobId(),
+    path: buildLatestReportHtmlPath(env, target),
     publishedAt: new Date().toISOString(),
     ref: options.ref || undefined,
+    isLatest: true,
+    artifactUrl: resolveArtifactUrl(),
+    buildUrl: resolveBuildUrl(),
   };
 
   const detailedPath = path.join(sourceDir, 'detailed-report.json');
@@ -145,7 +182,7 @@ function readReportIndexEntry(sourceDir: string, options: PublishOptions): Repor
     entry.publishedAt = summary.endTime || summary.startTime || entry.publishedAt;
     entry.branch = summary.ciInfo?.branch;
     entry.author = summary.ciInfo?.author;
-    entry.buildUrl = summary.ciInfo?.buildUrl;
+    entry.buildUrl = resolveBuildUrl(summary.ciInfo?.buildUrl);
     entry.ref = summary.ciInfo?.branch || entry.ref;
     entry.summary = {
       totalTests: summary.totalTests ?? 0,
@@ -160,6 +197,38 @@ function readReportIndexEntry(sourceDir: string, options: PublishOptions): Repor
   }
 
   return entry;
+}
+
+function readHistoryLimit(): number {
+  const raw = Number(process.env.REPORT_INDEX_HISTORY_LIMIT ?? '30');
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 30;
+}
+
+function stripHostedPath(item: ReportIndexEntry): ReportIndexEntry {
+  const { path: _path, isLatest: _isLatest, ...rest } = item;
+  return { ...rest, isLatest: false };
+}
+
+function capHistoryPerSlot(reports: ReportIndexEntry[], limit: number): ReportIndexEntry[] {
+  const groups = new Map<string, ReportIndexEntry[]>();
+
+  for (const report of reports) {
+    const key = `${report.env}/${report.target}`;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(report);
+    groups.set(key, bucket);
+  }
+
+  const capped: ReportIndexEntry[] = [];
+  for (const bucket of groups.values()) {
+    bucket.sort(
+      (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+    );
+    capped.push(...bucket.slice(0, limit));
+  }
+
+  capped.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  return capped;
 }
 
 function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
@@ -177,21 +246,44 @@ function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
     }
   }
 
-  index.reports = index.reports.filter(
-    (item) =>
-      !(
-        item.env === entry.env &&
-        item.target === entry.target &&
-        item.pipelineId === entry.pipelineId
-      ),
-  );
-  index.reports.push(entry);
-  index.reports.sort(
-    (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
-  );
+  index.reports = index.reports
+    .filter(
+      (item) =>
+        !(
+          item.env === entry.env &&
+          item.target === entry.target &&
+          item.pipelineId === entry.pipelineId
+        ),
+    )
+    .map((item) => (item.env === entry.env && item.target === entry.target ? stripHostedPath(item) : item));
+
+  index.reports.push({
+    ...entry,
+    isLatest: true,
+    path: buildLatestReportHtmlPath(entry.env, entry.target),
+  });
+  index.reports = capHistoryPerSlot(index.reports, readHistoryLimit());
   index.updatedAt = new Date().toISOString();
 
   fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
+}
+
+/** Remove per-pipeline report trees; only {env}/{target}/latest/ remains. */
+export function pruneLegacyPipelineDirs(repoRoot: string, testEnv: string, target: string): string[] {
+  const slotDir = path.join(repoRoot, buildSlotPrefix(testEnv, target));
+  if (!fs.existsSync(slotDir)) {
+    return [];
+  }
+
+  const removed: string[] = [];
+  for (const entry of fs.readdirSync(slotDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === LATEST_SEGMENT) continue;
+    const fullPath = path.join(slotDir, entry.name);
+    fs.rmSync(fullPath, { recursive: true, force: true });
+    removed.push(`${buildSlotPrefix(testEnv, target)}/${entry.name}`);
+  }
+
+  return removed;
 }
 
 export const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
@@ -210,7 +302,6 @@ function isJsonApiLogAttachment(fileName: string): boolean {
   return fileName.toLowerCase().endsWith('.json');
 }
 
-/** Copy non-JSON attachments (screenshots, traces). API logs live in enhanced-report.html. */
 function copyBinaryAttachments(attachmentsSrc: string, attachmentsDest: string): { copied: number; skipped: number } {
   let copied = 0;
   let skipped = 0;
@@ -231,15 +322,42 @@ function copyBinaryAttachments(attachmentsSrc: string, attachmentsDest: string):
   return { copied, skipped };
 }
 
-/** Publish HTML + binary attachments only; detailed-report.json stays in CI for index extraction. */
+function isPublishSlimEnabled(): boolean {
+  const raw = process.env.REPORT_PUBLISH_SLIM?.trim().toLowerCase();
+  if (raw === '0' || raw === 'false' || raw === 'off' || raw === 'no') {
+    return false;
+  }
+  return true;
+}
+
+function writeEnhancedReportHtml(sourceDir: string, destDir: string): void {
+  const srcPath = path.join(sourceDir, 'enhanced-report.html');
+  const destPath = path.join(destDir, 'enhanced-report.html');
+
+  if (!isPublishSlimEnabled()) {
+    fs.copyFileSync(srcPath, destPath);
+    console.error('[publish-report] Staged enhanced-report.html (slim disabled)');
+    return;
+  }
+
+  const raw = fs.readFileSync(srcPath, 'utf8');
+  const slimmed = slimReportHtmlForPublish(raw);
+  fs.writeFileSync(destPath, slimmed, 'utf8');
+
+  const before = Buffer.byteLength(raw, 'utf8');
+  const after = Buffer.byteLength(slimmed, 'utf8');
+  const saved = before > 0 ? (((before - after) / before) * 100).toFixed(1) : '0';
+  console.error(
+    `[publish-report] Slimmed HTML: ${formatBytes(before)} → ${formatBytes(after)} (-${saved}%)`,
+  );
+}
+
+/** Publish HTML + binary attachments only; detailed-report.json stays in CI artifacts. */
 function copyPublishableReport(sourceDir: string, destDir: string): void {
   fs.rmSync(destDir, { recursive: true, force: true });
   fs.mkdirSync(destDir, { recursive: true });
 
-  fs.copyFileSync(
-    path.join(sourceDir, 'enhanced-report.html'),
-    path.join(destDir, 'enhanced-report.html'),
-  );
+  writeEnhancedReportHtml(sourceDir, destDir);
 
   const attachmentsSrc = path.join(sourceDir, 'attachments');
   if (fs.existsSync(attachmentsSrc)) {
@@ -248,13 +366,9 @@ function copyPublishableReport(sourceDir: string, destDir: string): void {
       path.join(destDir, 'attachments'),
     );
     console.error(
-      `[publish-report] Attachments: copied ${copied} binary file(s), skipped ${skipped} JSON API log(s) (embedded in HTML)`,
+      `[publish-report] Attachments: copied ${copied} binary, skipped ${skipped} JSON API log(s)`,
     );
   }
-
-  console.error(
-    '[publish-report] Staged enhanced-report.html (detailed-report.json excluded from hosting repo)',
-  );
 }
 
 function copyDirectory(sourceDir: string, destDir: string): void {
@@ -289,6 +403,13 @@ function buildAuthenticatedGitUrl(repoUrl: string, token: string): string {
   return url.toString();
 }
 
+function logLegacyRemoval(removed: string[], slotPrefix: string): void {
+  if (removed.length === 0) return;
+  console.error(
+    `[publish-report] Removed ${removed.length} legacy pipeline dir(s) under ${slotPrefix}/`,
+  );
+}
+
 function publishViaGit(options: PublishOptions, baseUrl: string): string {
   const gitRepo = process.env.REPORT_PUBLISH_GIT_REPO?.trim();
   const gitToken = process.env.REPORT_PUBLISH_GIT_TOKEN?.trim();
@@ -302,7 +423,8 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const relativePath = buildRelativePath(options);
+  const relativePath = buildLatestRelativePath(options.testEnv, options.target);
+  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'classinshop-report-publish-'));
   const authUrl = buildAuthenticatedGitUrl(gitRepo, gitToken);
@@ -310,6 +432,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   try {
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT);
     copyDirectory(sourceDir, path.join(workDir, relativePath));
+    logLegacyRemoval(pruneLegacyPipelineDirs(workDir, options.testEnv, options.target), slotPrefix);
     updateReportsIndex(workDir, readReportIndexEntry(sourceDir, options));
 
     const gitEnv = {
@@ -320,7 +443,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
       GIT_COMMITTER_EMAIL: process.env.REPORT_PUBLISH_GIT_AUTHOR_EMAIL || 'ci@classinshop.local',
     };
 
-    runCommand('git', ['add', relativePath, REPORTS_INDEX_FILE], workDir, gitEnv);
+    runCommand('git', ['add', '-A', slotPrefix, REPORTS_INDEX_FILE], workDir, gitEnv);
     runCommand(
       'git',
       [
@@ -330,7 +453,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
         `user.email=${gitEnv.GIT_AUTHOR_EMAIL}`,
         'commit',
         '-m',
-        `report ${options.testEnv}/${options.target} pipeline ${options.pipelineId}`,
+        `report ${options.testEnv}/${options.target} latest (pipeline ${options.pipelineId})`,
       ],
       workDir,
       gitEnv,
@@ -386,16 +509,20 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const relativePath = buildRelativePath(options);
+  const relativePath = buildLatestRelativePath(options.testEnv, options.target);
+  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
   const sshKey = process.env.REPORT_PUBLISH_SSH_PRIVATE_KEY?.trim();
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
 
   if (rsyncTarget) {
-    publishToRemoteRoot(sourceDir, rsyncTarget, relativePath, sshKey);
-    updateReportsIndex(rsyncTarget.replace(/\/$/, ''), readReportIndexEntry(sourceDir, options));
+    const remoteRoot = rsyncTarget.replace(/\/$/, '');
+    publishToRemoteRoot(sourceDir, remoteRoot, relativePath, sshKey);
+    logLegacyRemoval(pruneLegacyPipelineDirs(remoteRoot, options.testEnv, options.target), slotPrefix);
+    updateReportsIndex(remoteRoot, readReportIndexEntry(sourceDir, options));
   } else if (localDir) {
     const localRoot = localDir.replace(/\/$/, '');
     copyDirectory(sourceDir, path.join(localRoot, relativePath));
+    logLegacyRemoval(pruneLegacyPipelineDirs(localRoot, options.testEnv, options.target), slotPrefix);
     updateReportsIndex(localRoot, readReportIndexEntry(sourceDir, options));
   }
 
