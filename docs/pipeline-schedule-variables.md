@@ -132,7 +132,8 @@ TEST_SUITE_PROJECTS=api
 
 ## 7. 报告过期清理（独立 Schedule）
 
-`classinshop-test-reports` 为静态托管仓，**无 Runner**；清理在 **本仓库** 执行。
+`classinshop-test-reports` 为静态托管仓，**无 Runner**；清理在 **本仓库** 执行。  
+清理仅删除 `reports-index.json` 里超过保留期的历史行（`isLatest` 保留）；**不删** `{env}/{target}/latest/` 托管文件。
 
 | 变量 | 必须？ | 作用 |
 |------|--------|------|

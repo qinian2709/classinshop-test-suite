@@ -175,7 +175,7 @@ test-suite:
       junit: reports/latest/junit.xml
     expire_in: 3 days
 
-# 清理 Coolify 报告仓中超过 RETENTION_DAYS 的目录（reports 项目无 CI Runner，由此 Job 执行）
+# 清理 reports 仓 reports-index.json 中超过 RETENTION_DAYS 的历史元数据（不删 latest 托管文件）
 cleanup-published-reports:
   stage: maintain
   image: node:20-bookworm-slim
