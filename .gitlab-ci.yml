@@ -145,7 +145,8 @@ prepare:
       --job-name "${CI_JOB_NAME}" \
       --project-name "${CI_PROJECT_NAME}" \
       --ref-name "${CI_COMMIT_REF_NAME}" \
-      --pipeline-url "${CI_PIPELINE_URL}" \
+      --pipeline-url "${CI_PROJECT_URL}/-/pipelines/${CI_PIPELINE_ID}" \
+      --job-url "${CI_JOB_URL}" \
       || echo "WARN: WeCom notification failed"
 
 # 单次 pipeline 只跑一个 Job：api + e2e 汇总到同一份 Enhanced / JUnit 报告，只发布一次、只通知一次。

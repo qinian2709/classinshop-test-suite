@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { buildGitLabArtifactsBrowseUrl } from './wecom-notify.js';
+import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl } from './wecom-notify.js';
 import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -121,7 +121,7 @@ interface ReportsIndex {
 }
 
 function resolveBuildUrl(ciBuildUrl?: string): string | undefined {
-  return ciBuildUrl?.trim() || process.env.CI_PIPELINE_URL?.trim() || undefined;
+  return ciBuildUrl?.trim() || buildGitLabPipelineUrl() || undefined;
 }
 
 function resolveArtifactUrl(): string | undefined {
@@ -291,7 +291,21 @@ export const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 function writePublishEnv(publicUrl: string): void {
   const dir = path.dirname(PUBLISH_ENV_FILE);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(PUBLISH_ENV_FILE, `ENHANCED_REPORT_URL=${publicUrl}\n`, 'utf8');
+
+  const lines = [`ENHANCED_REPORT_URL=${publicUrl}`];
+  const append = (key: string, value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (trimmed) lines.push(`${key}=${trimmed}`);
+  };
+
+  append('CI_PIPELINE_URL', buildGitLabPipelineUrl());
+  append('CI_PIPELINE_ID', process.env.CI_PIPELINE_ID);
+  append('CI_PIPELINE_IID', process.env.CI_PIPELINE_IID);
+  append('CI_JOB_ID', process.env.CI_JOB_ID);
+  append('CI_JOB_URL', process.env.CI_JOB_URL || buildGitLabJobUrl());
+  append('ARTIFACT_BROWSE_URL', buildGitLabArtifactsBrowseUrl());
+
+  fs.writeFileSync(PUBLISH_ENV_FILE, `${lines.join('\n')}\n`, 'utf8');
 }
 
 function buildPublicUrl(baseUrl: string, relativeDir: string): string {
