@@ -1,6 +1,8 @@
 /**
- * Clone classinshop-test-reports, delete expired report trees, prune matching index rows only.
- * Does NOT rebuild reports-index.json (preserves branch/author/summary metadata).
+ * Clone classinshop-test-reports:
+ * - Remove legacy {env}/{target}/{pipelineId}/ trees (keep latest/ only)
+ * - Prune expired index metadata (Pipeline/Artifacts links)
+ * - Strip legacy JSON attachments under latest/
  *
  * Usage:
  *   pnpm exec tsx scripts/cleanup-published-reports.ts
@@ -8,7 +10,7 @@
  *
  * Env:
  *   REPORT_PUBLISH_GIT_REPO / REPORT_PUBLISH_GIT_TOKEN / REPORT_PUBLISH_GIT_BRANCH
- *   RETENTION_DAYS (default 7)
+ *   RETENTION_DAYS (default 7) — index metadata retention
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -25,12 +27,15 @@ interface ReportIndexEntry {
   env: string;
   target: string;
   pipelineId: string;
-  path: string;
+  jobId?: string;
+  path?: string;
   publishedAt?: string;
   branch?: string;
   author?: string;
   buildUrl?: string;
+  artifactUrl?: string;
   ref?: string;
+  isLatest?: boolean;
   summary?: Record<string, unknown>;
 }
 
@@ -195,6 +200,99 @@ function pruneReportsIndex(index: ReportsIndex, deletedKeys: Set<string>): Repor
   };
 }
 
+function pruneAllLegacyPipelineDirs(workDir: string, dryRun: boolean): string[] {
+  const removed: string[] = [];
+  const skip = new Set(['.git', 'scripts', 'node_modules', 'index.html', 'reports-index.json', 'README.md', 'favicon.svg']);
+
+  for (const envEntry of fs.readdirSync(workDir, { withFileTypes: true })) {
+    if (!envEntry.isDirectory() || skip.has(envEntry.name) || envEntry.name.startsWith('.')) {
+      continue;
+    }
+
+    const envPath = path.join(workDir, envEntry.name);
+    for (const targetEntry of fs.readdirSync(envPath, { withFileTypes: true })) {
+      if (!targetEntry.isDirectory()) continue;
+      const slotDir = path.join(envPath, targetEntry.name);
+      for (const child of fs.readdirSync(slotDir, { withFileTypes: true })) {
+        if (!child.isDirectory() || child.name === 'latest') continue;
+        const relative = `${envEntry.name}/${targetEntry.name}/${child.name}`;
+        console.error(`[cleanup-reports] ${dryRun ? 'would delete' : 'delete'} legacy ${relative}`);
+        if (!dryRun) {
+          fs.rmSync(path.join(slotDir, child.name), { recursive: true, force: true });
+        }
+        removed.push(relative);
+      }
+    }
+  }
+
+  return removed;
+}
+
+function pruneExpiredIndexEntries(
+  index: ReportsIndex,
+  cutoffMs: number,
+  dryRun: boolean,
+): { next: ReportsIndex; removed: number } {
+  const before = index.reports.length;
+  const nextReports = index.reports.filter((item) => {
+    if (item.isLatest) return true;
+    const publishedAtMs = item.publishedAt ? new Date(item.publishedAt).getTime() : 0;
+    return publishedAtMs >= cutoffMs;
+  });
+
+  if (nextReports.length === before) {
+    return { next: index, removed: 0 };
+  }
+
+  console.error(
+    `[cleanup-reports] ${dryRun ? 'would prune' : 'prune'} index: ${before} -> ${nextReports.length} entries`,
+  );
+
+  if (dryRun) {
+    return { next: index, removed: before - nextReports.length };
+  }
+
+  return {
+    next: {
+      updatedAt: new Date().toISOString(),
+      reports: nextReports,
+    },
+    removed: before - nextReports.length,
+  };
+}
+
+function stripJsonAttachmentsLatestOnly(workDir: string, dryRun: boolean): number {
+  let removed = 0;
+
+  for (const enhancedDir of findReportDirs(workDir)) {
+    if (!enhancedDir.includes('/latest/enhanced')) continue;
+    const attachDir = path.join(enhancedDir, 'attachments');
+    if (!fs.existsSync(attachDir)) continue;
+
+    for (const entry of fs.readdirSync(attachDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith('.json')) continue;
+      const filePath = path.join(attachDir, entry.name);
+      const relative = path.relative(workDir, filePath).split(path.sep).join('/');
+      console.error(`[cleanup-reports] ${dryRun ? 'would delete' : 'delete'} ${relative}`);
+      if (!dryRun) {
+        fs.unlinkSync(filePath);
+      }
+      removed += 1;
+    }
+
+    if (!dryRun && fs.existsSync(attachDir) && fs.readdirSync(attachDir).length === 0) {
+      fs.rmdirSync(attachDir);
+    }
+  }
+
+  if (removed > 0) {
+    console.error(
+      `[cleanup-reports] ${dryRun ? 'Would remove' : 'Removed'} ${removed} JSON attachment(s).`,
+    );
+  }
+  return removed;
+}
+
 function cleanupReports(workDir: string, retentionDays: number, dryRun: boolean): boolean {
   const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
   const cutoffIso = new Date(cutoffMs).toISOString();
@@ -287,14 +385,32 @@ function main(): number {
     console.error(`[cleanup-reports] clone ${gitRepo} (branch ${gitBranch})`);
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT, env);
 
-    const changed = cleanupReports(workDir, retentionDays, dryRun);
+    const reportsChanged = cleanupReports(workDir, retentionDays, dryRun);
+    const legacyRemoved = pruneAllLegacyPipelineDirs(workDir, dryRun);
+
+    const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
+    const index = loadReportsIndex(workDir);
+    const { next: prunedIndex, removed: indexRemoved } = pruneExpiredIndexEntries(
+      index,
+      cutoffMs,
+      dryRun,
+    );
+    if (!dryRun && indexRemoved > 0) {
+      fs.writeFileSync(
+        path.join(workDir, REPORTS_INDEX_FILE),
+        `${JSON.stringify(prunedIndex, null, 2)}\n`,
+        'utf8',
+      );
+    }
+
+    const jsonRemoved = stripJsonAttachmentsLatestOnly(workDir, dryRun);
 
     if (dryRun) {
       console.error('[cleanup-reports] dry-run complete; no push.');
       return 0;
     }
 
-    if (!changed) {
+    if (!reportsChanged && legacyRemoved.length === 0 && indexRemoved === 0 && jsonRemoved === 0) {
       console.error('[cleanup-reports] No changes to commit.');
       return 0;
     }
