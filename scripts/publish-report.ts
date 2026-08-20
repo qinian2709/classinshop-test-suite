@@ -8,7 +8,7 @@ import {
   mergeEnvReportTargets,
   pruneSiblingTargetDirs,
   sanitizeSegment,
-  ensurePortalTargetLabels,
+  ensurePortalHtml,
 } from './report-slot.js';
 import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl } from './wecom-notify.js';
 import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
@@ -436,7 +436,7 @@ function finalizePublishedSlot(repoRoot: string, options: PublishOptions, source
 
   const portalIndex = path.join(repoRoot, 'index.html');
   if (fs.existsSync(portalIndex)) {
-    fs.writeFileSync(portalIndex, ensurePortalTargetLabels(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
+    fs.writeFileSync(portalIndex, ensurePortalHtml(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
   }
 }
 

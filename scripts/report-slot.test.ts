@@ -11,6 +11,7 @@ import {
   mergeEnvReportTargets,
   pruneSiblingTargetDirs,
   ensurePortalTargetLabels,
+  ensurePortalHtml,
   type ReportIndexEntry,
 } from './report-slot.ts';
 
@@ -80,6 +81,35 @@ describe('ensurePortalTargetLabels', () => {
     assert.match(once, /function displayTarget\(/);
     assert.match(once, /displayTarget\(item\.target\)/);
     assert.match(once, /labelFn/);
+    assert.equal(once, twice);
+  });
+});
+
+describe('ensurePortalHtml list layout', () => {
+  const nestedRow = `
+      function renderActionLinks(item) {
+        if (isHostedEntry(item)) {
+          return \`<a class="link-btn primary" href="\${escapeHtml(hostedHref(item))}">在线报告 →</a>\`;
+        }
+        const links = [];
+      }
+      const rowTag = hosted ? 'a' : 'div';
+      const rowAttrs = hosted ? \` href="\${escapeHtml(hostedHref(item))}"\` : '';
+      <\${rowTag} class="\${rowClass}"\${rowAttrs}></\${rowTag}>
+      .list-head, .report-row { grid-template-columns: 190px 76px 130px minmax(180px, 1fr) 190px 110px; }
+  `;
+
+  test('stops wrapping hosted rows in nested anchors', () => {
+    const patched = ensurePortalHtml(nestedRow);
+    assert.match(patched, /const rowTag = 'div'/);
+    assert.doesNotMatch(patched, /hosted \? 'a' : 'div'/);
+    assert.match(patched, /links\.push\(/);
+    assert.doesNotMatch(patched, /if \(isHostedEntry\(item\)\) \{\s*return `<a class="link-btn primary"/);
+  });
+
+  test('is idempotent', () => {
+    const once = ensurePortalHtml(nestedRow);
+    const twice = ensurePortalHtml(once);
     assert.equal(once, twice);
   });
 });
