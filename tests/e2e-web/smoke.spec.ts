@@ -15,15 +15,15 @@ test.describe('PC 后台冒烟 @smoke', () => {
     await home.goto();
     await attachStepScreenshot(page, testInfo, '01-PC后台首页已加载');
 
-    await expect(page).toHaveTitle(/.+/);
-    expect(await home.hasRenderedAppShell()).toBeTruthy();
+    await expect(page, 'PC 后台首页应设置页面标题').toHaveTitle(/.+/);
+    expect(await home.hasRenderedAppShell(), 'PC 后台首页应渲染应用外壳').toBeTruthy();
     // React 应用不应抛出未捕获异常
     expect(errors, `页面 JS 报错：\n${errors.join('\n')}`).toHaveLength(0);
   });
 
   test('首页关键静态资源应成功加载（无 4xx/5xx 主文档）', async ({ page }, testInfo) => {
     const response = await page.goto('/');
-    expect(response?.ok(), `主文档响应状态 ${response?.status()}`).toBeTruthy();
+    expect(response?.ok(), `PC 后台主文档应成功加载，实际状态 ${response?.status()}`).toBeTruthy();
     await attachStepScreenshot(page, testInfo, '01-PC后台主文档已加载');
   });
 });
