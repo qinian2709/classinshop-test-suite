@@ -20,7 +20,7 @@ test.describe('PC 后台登录', () => {
     await login.login(accounts.e2e.username, accounts.e2e.password);
 
     // 登录成功后地址栏应离开登录页 / 出现已登录态标识
-    await expect(page).not.toHaveURL(/login/i);
+    await expect(page, '登录成功后不应停留在登录页').not.toHaveURL(/login/i);
     await attachStepScreenshot(page, testInfo, '02-PC后台登录成功');
   });
 });

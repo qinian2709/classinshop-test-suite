@@ -2,6 +2,7 @@ import { test as base, expect } from '@playwright/test';
 import { accounts, env } from '@config';
 import { resolveAuthTokens } from '../../../shared/auth/login.js';
 import { bootstrapClassInAuth, installClassInAuth } from '../helpers/auth.js';
+import { attachFailureScreenshot } from '../helpers/screenshots.js';
 import { ShopListPage } from '../pages/ShopListPage.js';
 
 interface AuthedFixtures {
@@ -29,6 +30,7 @@ export const test = base.extend<AuthedFixtures>({
     await shopList.waitForReady();
 
     await use(shopList);
+    await attachFailureScreenshot(page, testInfo);
   },
 });
 

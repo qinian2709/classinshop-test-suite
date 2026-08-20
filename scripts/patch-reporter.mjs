@@ -1336,6 +1336,83 @@ function main() {
     }
   }
 
+  // 17. Suites 失败用例内联截图（details 表默认关闭，附件图标看不见）
+  if (!content.includes('generateSuiteFailureMediaHTML')) {
+    const suiteItemNeedle = '    static generateSuiteTestItem(test) {';
+    const suiteItemReplacement =
+      '    static generateSuiteFailureMediaHTML(test) {\n' +
+      '        // patched: inline failure screenshots in Test Suites\n' +
+      '        const attachments = (test && test.attachments) || [];\n' +
+      '        const images = attachments.filter(function (item) {\n' +
+      "            return item && item.path && String(item.contentType || '').indexOf('image/') === 0;\n" +
+      '        });\n' +
+      "        if (!images.length) return '';\n" +
+      '        const figures = images.map(function (item) {\n' +
+      "            const src = String(item.path).replace(/&/g, '&amp;').replace(/\"/g, '&quot;').replace(/</g, '&lt;');\n" +
+      "            const alt = String(item.name || 'screenshot').replace(/&/g, '&amp;').replace(/\"/g, '&quot;').replace(/</g, '&lt;');\n" +
+      "            return '<figure class=\"test-failure-shot\"><img src=\"' + src + '\" alt=\"' + alt + '\" loading=\"lazy\"/><figcaption>' + alt + '</figcaption></figure>';\n" +
+      "        }).join('');\n" +
+      "        return '<div class=\"test-failure-shots\">' + figures + '</div>';\n" +
+      '    }\n' +
+      '    static generateSuiteTestItem(test) {';
+    if (!content.includes(suiteItemNeedle)) {
+      console.warn('⚠️  patch #17 generateSuiteTestItem needle not found, skipping');
+    } else {
+      content = content.replace(suiteItemNeedle, suiteItemReplacement);
+      patched = true;
+    }
+
+    const suiteErrorNeedle =
+      '            ${test.error ? `<div class="test-error"><code>${this.escapeHtml(this.sanitizeErrorMessage(test.error))}</code></div>${this.generateDiffView(test.error)}` : \'\'}\n' +
+      '            ${test.tags && test.tags.length > 0 ? `<div class="test-tags">${test.tags.map(t => `<span class="tag-badge">${this.escapeHtml(t)}</span>`).join(\'\')}</div>` : \'\'}';
+    const suiteErrorReplacement =
+      '            ${test.error ? `<div class="test-error"><code>${this.escapeHtml(this.sanitizeErrorMessage(test.error))}</code></div>${this.generateDiffView(test.error)}` : \'\'}\n' +
+      '            ${this.generateSuiteFailureMediaHTML(test)}\n' +
+      '            ${test.tags && test.tags.length > 0 ? `<div class="test-tags">${test.tags.map(t => `<span class="tag-badge">${this.escapeHtml(t)}</span>`).join(\'\')}</div>` : \'\'}';
+    if (!content.includes(suiteErrorNeedle)) {
+      console.warn('⚠️  patch #17 suite error needle not found, skipping');
+    } else {
+      content = content.replace(suiteErrorNeedle, suiteErrorReplacement);
+      patched = true;
+    }
+  }
+
+  if (!content.includes('patched: failure screenshot css')) {
+    const failureShotCss =
+      '        /* patched: failure screenshot css */\n' +
+      '        .test-failure-shots {\n' +
+      '            display: flex;\n' +
+      '            flex-wrap: wrap;\n' +
+      '            gap: 12px;\n' +
+      '            margin: 8px 16px 12px;\n' +
+      '        }\n' +
+      '        .test-failure-shot {\n' +
+      '            margin: 0;\n' +
+      '            max-width: 360px;\n' +
+      '        }\n' +
+      '        .test-failure-shot img {\n' +
+      '            display: block;\n' +
+      '            width: 100%;\n' +
+      '            max-height: 480px;\n' +
+      '            object-fit: contain;\n' +
+      '            border: 1px solid var(--md-outline);\n' +
+      '            border-radius: 8px;\n' +
+      '            background: #fff;\n' +
+      '        }\n' +
+      '        .test-failure-shot figcaption {\n' +
+      '            margin-top: 4px;\n' +
+      '            font-size: 0.75rem;\n' +
+      '            color: rgba(0,0,0,0.55);\n' +
+      '        }\n';
+    const cssAnchor = '        .step-error, .test-error {\n';
+    if (!content.includes(cssAnchor)) {
+      console.warn('⚠️  patch #17 failure screenshot css needle not found, skipping');
+    } else {
+      content = content.replace(cssAnchor, failureShotCss + cssAnchor);
+      patched = true;
+    }
+  }
+
   if (patched) {
     writeFileSync(reporterPath, content, 'utf-8');
     console.log('✅ playwright-enhanced-reporter patched');
@@ -1383,6 +1460,49 @@ function main() {
         console.warn('⚠️  patch #9b api extract needle not found, skipping');
       } else {
         indexContent = indexContent.replace(durationExtractNeedle, durationExtractReplacement);
+        indexPatched = true;
+      }
+    }
+
+    if (!indexContent.includes('patched: save attachment fallback')) {
+      const saveNeedle =
+        '                    try {\n' +
+        '                        if (attachment.path) {\n' +
+        '                            // Copy from existing path\n' +
+        '                            await fs.copy(attachment.path, filePath);\n' +
+        '                        }\n' +
+        '                        else if (attachment.body) {\n' +
+        '                            // Write from buffer\n' +
+        '                            await fs.writeFile(filePath, attachment.body);\n' +
+        '                        }\n' +
+        '                        // Update attachment with relative path for HTML\n' +
+        '                        attachment.path = `attachments/${filename}`;\n' +
+        '                    }\n' +
+        '                    catch (error) {\n' +
+        '                        console.warn(`⚠️ Failed to save attachment ${attachment.name}:`, error);\n' +
+        '                    }';
+      const saveReplacement =
+        '                    try {\n' +
+        '                        // patched: save attachment fallback\n' +
+        '                        if (attachment.path && await fs.pathExists(attachment.path)) {\n' +
+        '                            await fs.copy(attachment.path, filePath);\n' +
+        '                        }\n' +
+        '                        else if (attachment.body) {\n' +
+        '                            await fs.writeFile(filePath, attachment.body);\n' +
+        '                        }\n' +
+        '                        else {\n' +
+        "                            console.warn(`⚠️ Failed to save attachment ${attachment.name}: missing path/body`);\n" +
+        '                            continue;\n' +
+        '                        }\n' +
+        '                        attachment.path = `attachments/${filename}`;\n' +
+        '                    }\n' +
+        '                    catch (error) {\n' +
+        '                        console.warn(`⚠️ Failed to save attachment ${attachment.name}:`, error);\n' +
+        '                    }';
+      if (!indexContent.includes(saveNeedle)) {
+        console.warn('⚠️  patch #17 save attachment needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(saveNeedle, saveReplacement);
         indexPatched = true;
       }
     }

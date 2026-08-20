@@ -132,7 +132,10 @@ TEST_SUITE_PROJECTS=api
 
 ## 7. 报告过期清理（独立 Schedule）
 
-`classinshop-test-reports` 为静态托管仓，**无 Runner**；清理在 **本仓库** 执行。
+`classinshop-test-reports` 为静态托管仓，**无 Runner**；清理在 **本仓库** 执行。  
+清理会：1) 删除 `reports-index.json` 里超过保留期的历史行（`isLatest` 保留）；2) **orphan 压成单 commit 并 force-with-lease**，让仓库体积跟当前 `latest/` 树走，而不是每次 publish 堆 blob。**不删** `{env}/{target}/latest/` 托管文件。
+
+`classinshop-test-reports` 的 **`main` 必须允许 force push**（Protected branches → Allowed to force push），否则 cleanup Job 会被 GitLab 拒绝。
 
 | 变量 | 必须？ | 作用 |
 |------|--------|------|
@@ -140,6 +143,7 @@ TEST_SUITE_PROJECTS=api
 | `RETENTION_DAYS` | 可选 | 默认 `7` |
 | `REPORT_PUBLISH_GIT_REPO` | **是** | 报告仓库 URL（同发布） |
 | `REPORT_PUBLISH_GIT_TOKEN` | **是** | push 权限 PAT（Masked） |
+| `SQUASH_GIT_HISTORY` | 可选 | 默认开启；设 `0` 则只普通 commit，不压历史 |
 | `SCHEDULE_CLEANUP_REPORTS` | Web 用 | Run pipeline 手动触发清理时设为 `1` |
 
 **新建 Schedule 示例**（每天 10:00 北京时间）：
@@ -166,6 +170,7 @@ Cron：`0 10 * * *`，Timezone：`Asia/Shanghai`。Target branch 用 test-suite 
 | 跑错环境 | `SCHEDULE_TEST_ENV` 与 Target branch 是否一致 |
 | 企微无 Coolify 链接 | 是否缺少 `REPORT_PUBLISH_*` 三件套 |
 | 企微链接 404 | 调大 `WECOM_PUBLISH_WAIT_SECONDS`（默认 30） |
+| cleanup force push 被拒 | reports 仓 `main` 未允许 force push；或 publish 与 cleanup 抢同一 SHA，重跑即可 |
 | 大量用例 skip / 登录失败 | **非本文档范围** → 见 [`run-guide.md`](./run-guide.md) 配置 Token 等 |
 
 ---
