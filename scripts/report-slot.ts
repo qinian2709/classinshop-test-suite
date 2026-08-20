@@ -78,7 +78,9 @@ const NESTED_HOSTED_ACTION = `        if (isHostedEntry(item)) {
         }
         const links = [];`;
 
-const STACKED_HOSTED_ACTION = `        const links = [];
+const LINKS_START = '        const links = [];';
+
+const HOSTED_ONLINE_PUSH = `        const links = [];
         if (isHostedEntry(item)) {
           links.push(
             \`<a class="link-btn primary" href="\${escapeHtml(hostedHref(item))}">在线报告</a>\`,
@@ -92,10 +94,15 @@ export function ensurePortalListLayout(html: string): string {
     'const rowAttrs = hosted ? ` href="${escapeHtml(hostedHref(item))}"` : \'\';',
     "const rowAttrs = '';",
   );
-  next = next.replaceAll(NESTED_HOSTED_ACTION, STACKED_HOSTED_ACTION);
+  next = next.replaceAll(HOSTED_ONLINE_PUSH, LINKS_START);
+  next = next.replaceAll(NESTED_HOSTED_ACTION, LINKS_START);
   next = next.replaceAll(
     'grid-template-columns: 190px 76px 130px minmax(180px, 1fr) 190px 110px;',
+    'grid-template-columns: 236px 72px 88px minmax(140px, 1fr) 168px 110px;',
+  );
+  next = next.replaceAll(
     'grid-template-columns: 178px 72px 88px minmax(140px, 1fr) 168px 132px;',
+    'grid-template-columns: 236px 72px 88px minmax(140px, 1fr) 168px 110px;',
   );
   next = next.replaceAll(
     `.action-links {
@@ -133,6 +140,28 @@ export function ensurePortalListLayout(html: string): string {
         padding-bottom: 10px;
         overflow: hidden;
         border-bottom: 1px solid #e2e8f0;`,
+  );
+  next = next.replaceAll(
+    `.time-main {
+        font-size: 0.88rem;
+        font-weight: 600;
+      }`,
+    `.time-main {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 8px;
+        white-space: nowrap;
+        font-size: 0.88rem;
+        font-weight: 600;
+      }`,
+  );
+  next = next.replaceAll(
+    `.badge-latest {
+        margin-left: 8px;`,
+    `.badge-latest {
+        flex-shrink: 0;
+        margin-left: 0;`,
   );
   next = next.replaceAll(
     `<span>结果</span>

@@ -103,8 +103,28 @@ describe('ensurePortalHtml list layout', () => {
     const patched = ensurePortalHtml(nestedRow);
     assert.match(patched, /const rowTag = 'div'/);
     assert.doesNotMatch(patched, /hosted \? 'a' : 'div'/);
-    assert.match(patched, /links\.push\(/);
+    assert.doesNotMatch(patched, /在线报告/);
     assert.doesNotMatch(patched, /if \(isHostedEntry\(item\)\) \{\s*return `<a class="link-btn primary"/);
+  });
+
+  test('strips 在线报告 from history action cells', () => {
+    const html = `
+        const links = [];
+        if (isHostedEntry(item)) {
+          links.push(
+            \`<a class="link-btn primary" href="\${escapeHtml(hostedHref(item))}">在线报告</a>\`,
+          );
+        }
+      .time-main {
+        font-size: 0.88rem;
+        font-weight: 600;
+      }
+      grid-template-columns: 178px 72px 88px minmax(140px, 1fr) 168px 132px;
+    `;
+    const patched = ensurePortalHtml(html);
+    assert.doesNotMatch(patched, /在线报告/);
+    assert.match(patched, /white-space: nowrap/);
+    assert.match(patched, /236px 72px 88px/);
   });
 
   test('is idempotent', () => {

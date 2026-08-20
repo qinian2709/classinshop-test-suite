@@ -75,6 +75,7 @@ export function buildGitLabEnhancedReportUrl(
 
 export interface ReportLinks {
   enhanced?: string;
+  portalHome?: string;
   artifactsBrowse?: string;
   job?: string;
   localPath?: string;
@@ -84,6 +85,7 @@ export interface ReportLinks {
 
 interface PublishEnvContext {
   enhancedReportUrl?: string;
+  portalHomeUrl?: string;
   pipelineUrl?: string;
   pipelineId?: string;
   pipelineIid?: string;
@@ -98,13 +100,34 @@ function isHttpUrl(value: string | undefined): value is string {
 
 const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 
+export function resolvePortalHomeUrl(
+  baseUrl = process.env.REPORT_PUBLISH_BASE_URL,
+  enhancedUrl?: string,
+): string | undefined {
+  const fromBase = originHome(baseUrl);
+  if (fromBase) return fromBase;
+  return originHome(enhancedUrl);
+}
+
+function originHome(value?: string): string | undefined {
+  const raw = value?.trim();
+  if (!raw || !raw.startsWith('http')) return undefined;
+  try {
+    return `${new URL(raw).origin}/`;
+  } catch {
+    return undefined;
+  }
+}
+
 function readPublishEnv(): PublishEnvContext {
   if (!fs.existsSync(PUBLISH_ENV_FILE)) return {};
   const parsed = dotenv.parse(fs.readFileSync(PUBLISH_ENV_FILE));
   const enhancedReportUrl = parsed.ENHANCED_REPORT_URL?.trim();
+  const portalHomeUrl = parsed.PORTAL_HOME_URL?.trim();
   return {
     enhancedReportUrl:
       enhancedReportUrl && enhancedReportUrl.startsWith('http') ? enhancedReportUrl : undefined,
+    portalHomeUrl: portalHomeUrl && portalHomeUrl.startsWith('http') ? portalHomeUrl : undefined,
     pipelineUrl: parsed.CI_PIPELINE_URL?.trim(),
     pipelineId: parsed.CI_PIPELINE_ID?.trim(),
     pipelineIid: parsed.CI_PIPELINE_IID?.trim(),
@@ -187,14 +210,27 @@ export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
       ? localCandidate
       : undefined;
 
-  return { enhanced, artifactsBrowse, job, localPath, pipelineId, pipelineIid };
+  return {
+    enhanced,
+    portalHome: publishEnv.portalHomeUrl || resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, enhanced),
+    artifactsBrowse,
+    job,
+    localPath,
+    pipelineId,
+    pipelineIid,
+  };
 }
 
-function formatReportSection(links: ReportLinks): string[] {
+export function formatReportSection(links: ReportLinks): string[] {
   const lines = ['**测试报告**'];
 
   if (links.enhanced) {
     lines.push(`[在线最新报告](${links.enhanced})`);
+  }
+  if (links.portalHome) {
+    lines.push(`[查看历史报告](${links.portalHome})`);
+  }
+  if (links.enhanced || links.portalHome) {
     return lines;
   }
 
