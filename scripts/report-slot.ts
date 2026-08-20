@@ -73,6 +73,109 @@ export function pruneSiblingTargetDirs(repoRoot: string, testEnv: string, keepTa
   return removed;
 }
 
+const NESTED_HOSTED_ACTION = `        if (isHostedEntry(item)) {
+          return \`<a class="link-btn primary" href="\${escapeHtml(hostedHref(item))}">在线报告 →</a>\`;
+        }
+        const links = [];`;
+
+const LINKS_START = '        const links = [];';
+
+const HOSTED_ONLINE_PUSH = `        const links = [];
+        if (isHostedEntry(item)) {
+          links.push(
+            \`<a class="link-btn primary" href="\${escapeHtml(hostedHref(item))}">在线报告</a>\`,
+          );
+        }`;
+
+export function ensurePortalListLayout(html: string): string {
+  let next = html;
+  next = next.replaceAll("const rowTag = hosted ? 'a' : 'div';", "const rowTag = 'div';");
+  next = next.replaceAll(
+    'const rowAttrs = hosted ? ` href="${escapeHtml(hostedHref(item))}"` : \'\';',
+    "const rowAttrs = '';",
+  );
+  next = next.replaceAll(HOSTED_ONLINE_PUSH, LINKS_START);
+  next = next.replaceAll(NESTED_HOSTED_ACTION, LINKS_START);
+  next = next.replaceAll(
+    'grid-template-columns: 190px 76px 130px minmax(180px, 1fr) 190px 110px;',
+    'grid-template-columns: 236px 72px 88px minmax(140px, 1fr) 168px 110px;',
+  );
+  next = next.replaceAll(
+    'grid-template-columns: 178px 72px 88px minmax(140px, 1fr) 168px 132px;',
+    'grid-template-columns: 236px 72px 88px minmax(140px, 1fr) 168px 110px;',
+  );
+  next = next.replaceAll(
+    `.action-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+      }`,
+    `.action-links {
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
+        align-items: stretch;
+        gap: 6px;
+        justify-content: flex-end;
+      }`,
+  );
+  next = next.replaceAll(
+    `.link-btn {
+        display: inline-flex;
+        padding: 7px 11px;`,
+    `.link-btn {
+        display: inline-flex;
+        justify-content: center;
+        white-space: nowrap;
+        padding: 7px 11px;`,
+  );
+  next = next.replaceAll(
+    `.report-row {
+        min-height: 76px;
+        border-bottom: 1px solid #e2e8f0;`,
+    `.report-row {
+        min-height: 88px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        overflow: hidden;
+        border-bottom: 1px solid #e2e8f0;`,
+  );
+  next = next.replaceAll(
+    `.time-main {
+        font-size: 0.88rem;
+        font-weight: 600;
+      }`,
+    `.time-main {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: nowrap;
+        gap: 8px;
+        white-space: nowrap;
+        font-size: 0.88rem;
+        font-weight: 600;
+      }`,
+  );
+  next = next.replaceAll(
+    `.badge-latest {
+        margin-left: 8px;`,
+    `.badge-latest {
+        flex-shrink: 0;
+        margin-left: 0;`,
+  );
+  next = next.replaceAll(
+    `<span>结果</span>
+          <span></span>`,
+    `<span>结果</span>
+          <span>操作</span>`,
+  );
+  return next;
+}
+
+export function ensurePortalHtml(html: string): string {
+  return ensurePortalListLayout(ensurePortalTargetLabels(html));
+}
+
 export function ensurePortalTargetLabels(html: string): string {
   let next = html;
   if (!next.includes('function displayTarget(')) {

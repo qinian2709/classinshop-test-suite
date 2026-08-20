@@ -8,9 +8,9 @@ import {
   mergeEnvReportTargets,
   pruneSiblingTargetDirs,
   sanitizeSegment,
-  ensurePortalTargetLabels,
+  ensurePortalHtml,
 } from './report-slot.js';
-import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl } from './wecom-notify.js';
+import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl, resolvePortalHomeUrl } from './wecom-notify.js';
 import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -308,6 +308,7 @@ function writePublishEnv(publicUrl: string): void {
   append('CI_JOB_ID', process.env.CI_JOB_ID);
   append('CI_JOB_URL', process.env.CI_JOB_URL || buildGitLabJobUrl());
   append('ARTIFACT_BROWSE_URL', buildGitLabArtifactsBrowseUrl());
+  append('PORTAL_HOME_URL', resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, publicUrl));
 
   fs.writeFileSync(PUBLISH_ENV_FILE, `${lines.join('\n')}\n`, 'utf8');
 }
@@ -436,7 +437,7 @@ function finalizePublishedSlot(repoRoot: string, options: PublishOptions, source
 
   const portalIndex = path.join(repoRoot, 'index.html');
   if (fs.existsSync(portalIndex)) {
-    fs.writeFileSync(portalIndex, ensurePortalTargetLabels(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
+    fs.writeFileSync(portalIndex, ensurePortalHtml(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
   }
 }
 
