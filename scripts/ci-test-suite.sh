@@ -58,8 +58,8 @@ else
   echo "[ci-test-suite] branch/MR smoke: api demo (${API_DEMO_SPEC})"
 fi
 
-notify_target="$(IFS=+; echo "${projects[*]}")"
-echo "NOTIFY_TARGET=${notify_target}" > notify.env
+echo "NOTIFY_TARGET=all" > notify.env
+echo "NOTIFY_SCOPE=$(IFS=,; echo "${projects[*]}")" >> notify.env
 
 cmd=(pnpm exec playwright test --workers=1)
 for project in "${projects[@]}"; do

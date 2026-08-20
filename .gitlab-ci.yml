@@ -103,7 +103,8 @@ prepare:
       . ./notify.env
       set +a
     fi
-    NOTIFY_TARGET="${NOTIFY_TARGET:-core}"
+    NOTIFY_TARGET="${NOTIFY_TARGET:-all}"
+    NOTIFY_SCOPE="${NOTIFY_SCOPE:-}"
     mkdir -p reports/latest
     if [ ! -f reports/latest/junit.xml ]; then
       printf '%s\n' \
@@ -126,7 +127,7 @@ prepare:
       fi
       eval "$(pnpm exec tsx scripts/publish-report.ts \
         --env "${TEST_ENV}" \
-        --target "${NOTIFY_TARGET}" \
+        --target all \
         --source reports/latest/enhanced \
         --pipeline-id "${CI_PIPELINE_ID}" \
         --ref "${CI_COMMIT_REF_NAME}")" \
@@ -139,7 +140,8 @@ prepare:
     corepack prepare pnpm@${PNPM_VERSION} --activate
     pnpm exec tsx scripts/wecom-notify.ts \
       --env "${TEST_ENV}" \
-      --target "${NOTIFY_TARGET}" \
+      --target all \
+      --scope "${NOTIFY_SCOPE}" \
       --exit-code "${CI_JOB_STATUS:-failed}" \
       --junit reports/latest/junit.xml \
       --job-name "${CI_JOB_NAME}" \
@@ -175,7 +177,10 @@ test-suite:
       junit: reports/latest/junit.xml
     expire_in: 3 days
 
-# 清理 reports 仓 reports-index.json 中超过 RETENTION_DAYS 的历史元数据（不删 latest 托管文件）
+# 清理 reports 仓：修剪过期 index 元数据，并把 Git 历史 orphan 压成单 commit 后 force-with-lease。
+# 不删 {env}/{target}/latest/ 托管文件。SQUASH_GIT_HISTORY=0 可关压历史。
+# classinshop-test-reports 的 main 必须允许 CI token force push：
+# Settings → Repository → Protected branches → main → Allowed to force push
 cleanup-published-reports:
   stage: maintain
   image: node:20-bookworm-slim

@@ -3,6 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import {
+  canonicalizeReportTarget,
+  mergeEnvReportTargets,
+  pruneSiblingTargetDirs,
+  sanitizeSegment,
+  ensurePortalTargetLabels,
+} from './report-slot.js';
 import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl } from './wecom-notify.js';
 import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
 
@@ -21,7 +28,7 @@ function usage(): never {
   console.error(`
 Usage:
   pnpm exec tsx scripts/publish-report.ts \\
-    --env 14 --target api --source reports/latest/enhanced \\
+    --env 14 --target all --source reports/latest/enhanced \\
     --pipeline-id 12345 --ref 14
 
 Environment (CI/CD Variables):
@@ -34,10 +41,11 @@ Environment (CI/CD Variables):
   REPORT_PUBLISH_SSH_PRIVATE_KEY   （可选）rsync SSH 私钥
   REPORT_PUBLISH_LOCAL_DIR         （可选）本机目录拷贝
   REPORT_PUBLISH_SLIM              默认 1：托管版去掉通过用例 API body；设 0 关闭
-  REPORT_INDEX_HISTORY_LIMIT       每个 env+target 索引保留最近 N 次（默认 30，仅元数据+外链）
+  REPORT_INDEX_HISTORY_LIMIT       每个 env 索引保留最近 N 次（默认 30，仅元数据+外链）
 
 发布策略:
-  报告 HTML 固定覆盖 {env}/{target}/latest/enhanced/；删除同槽位下旧 pipelineId 目录。
+  每个环境只保留一个分类 all（全量）：覆盖 {env}/all/latest/enhanced/；
+  删除同环境下 api / e2e-web 等旧分类目录。
   历史完整报告见 GitLab Job Artifacts（索引记录 jobId / artifactUrl）。
 
 Outputs:
@@ -53,10 +61,6 @@ function readArg(args: string[], name: string): string | undefined {
   const prefix = `${name}=`;
   const inline = args.find((arg) => arg.startsWith(prefix));
   return inline?.slice(prefix.length);
-}
-
-function sanitizeSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._+-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
 }
 
 function resolveSourceDir(source: string): string {
@@ -246,7 +250,7 @@ function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
     }
   }
 
-  index.reports = index.reports
+  index.reports = mergeEnvReportTargets(index.reports, entry.env, entry.target)
     .filter(
       (item) =>
         !(
@@ -255,7 +259,7 @@ function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
           item.pipelineId === entry.pipelineId
         ),
     )
-    .map((item) => (item.env === entry.env && item.target === entry.target ? stripHostedPath(item) : item));
+    .map((item) => (item.env === entry.env ? stripHostedPath(item) : item));
 
   index.reports.push({
     ...entry,
@@ -420,8 +424,20 @@ function buildAuthenticatedGitUrl(repoUrl: string, token: string): string {
 function logLegacyRemoval(removed: string[], slotPrefix: string): void {
   if (removed.length === 0) return;
   console.error(
-    `[publish-report] Removed ${removed.length} legacy pipeline dir(s) under ${slotPrefix}/`,
+    `[publish-report] Removed ${removed.length} leftover dir(s) under ${slotPrefix}: ${removed.join(', ')}`,
   );
+}
+
+function finalizePublishedSlot(repoRoot: string, options: PublishOptions, sourceDir: string): void {
+  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
+  logLegacyRemoval(pruneLegacyPipelineDirs(repoRoot, options.testEnv, options.target), slotPrefix);
+  logLegacyRemoval(pruneSiblingTargetDirs(repoRoot, options.testEnv, options.target), sanitizeSegment(options.testEnv));
+  updateReportsIndex(repoRoot, readReportIndexEntry(sourceDir, options));
+
+  const portalIndex = path.join(repoRoot, 'index.html');
+  if (fs.existsSync(portalIndex)) {
+    fs.writeFileSync(portalIndex, ensurePortalTargetLabels(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
+  }
 }
 
 function publishViaGit(options: PublishOptions, baseUrl: string): string {
@@ -438,7 +454,6 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
 
   const sourceDir = resolveSourceDir(options.sourceDir);
   const relativePath = buildLatestRelativePath(options.testEnv, options.target);
-  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'classinshop-report-publish-'));
   const authUrl = buildAuthenticatedGitUrl(gitRepo, gitToken);
@@ -446,8 +461,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   try {
     runCommand('git', ['clone', '--depth', '1', '--branch', gitBranch, authUrl, workDir], ROOT);
     copyDirectory(sourceDir, path.join(workDir, relativePath));
-    logLegacyRemoval(pruneLegacyPipelineDirs(workDir, options.testEnv, options.target), slotPrefix);
-    updateReportsIndex(workDir, readReportIndexEntry(sourceDir, options));
+    finalizePublishedSlot(workDir, options, sourceDir);
 
     const gitEnv = {
       ...process.env,
@@ -457,7 +471,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
       GIT_COMMITTER_EMAIL: process.env.REPORT_PUBLISH_GIT_AUTHOR_EMAIL || 'ci@classinshop.local',
     };
 
-    runCommand('git', ['add', '-A', slotPrefix, REPORTS_INDEX_FILE], workDir, gitEnv);
+    runCommand('git', ['add', '-A', sanitizeSegment(options.testEnv), REPORTS_INDEX_FILE, 'index.html'], workDir, gitEnv);
     runCommand(
       'git',
       [
@@ -524,20 +538,17 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
 
   const sourceDir = resolveSourceDir(options.sourceDir);
   const relativePath = buildLatestRelativePath(options.testEnv, options.target);
-  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
   const sshKey = process.env.REPORT_PUBLISH_SSH_PRIVATE_KEY?.trim();
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
 
   if (rsyncTarget) {
     const remoteRoot = rsyncTarget.replace(/\/$/, '');
     publishToRemoteRoot(sourceDir, remoteRoot, relativePath, sshKey);
-    logLegacyRemoval(pruneLegacyPipelineDirs(remoteRoot, options.testEnv, options.target), slotPrefix);
-    updateReportsIndex(remoteRoot, readReportIndexEntry(sourceDir, options));
+    finalizePublishedSlot(remoteRoot, options, sourceDir);
   } else if (localDir) {
     const localRoot = localDir.replace(/\/$/, '');
     copyDirectory(sourceDir, path.join(localRoot, relativePath));
-    logLegacyRemoval(pruneLegacyPipelineDirs(localRoot, options.testEnv, options.target), slotPrefix);
-    updateReportsIndex(localRoot, readReportIndexEntry(sourceDir, options));
+    finalizePublishedSlot(localRoot, options, sourceDir);
   }
 
   console.error(`[publish-report] Report URL: ${publicUrl}`);
@@ -560,7 +571,7 @@ function publish(options: PublishOptions): string {
 
 function parseOptions(argv: string[]): PublishOptions {
   const testEnv = readArg(argv, '--env') ?? process.env.TEST_ENV ?? '';
-  const target = readArg(argv, '--target') ?? 'api';
+  const target = canonicalizeReportTarget(readArg(argv, '--target'));
   const sourceDir = readArg(argv, '--source') ?? 'reports/latest/enhanced';
   const pipelineId = readArg(argv, '--pipeline-id') ?? process.env.CI_PIPELINE_ID ?? '';
   const ref = readArg(argv, '--ref') ?? process.env.CI_COMMIT_REF_NAME ?? '';

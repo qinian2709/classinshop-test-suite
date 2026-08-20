@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { formatReportScopeLabel, formatReportTargetLabel } from './report-slot.js';
 import { resolveWeComWebhookUrl } from '../config/wecom.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -20,6 +21,7 @@ export interface JUnitSummary {
 export interface WeComNotifyInput {
   testEnv: string;
   target: string;
+  scope?: string;
   exitCode: number;
   junitFile: string;
   enhancedReportUrl?: string;
@@ -320,8 +322,12 @@ export function buildWeComMarkdown(input: WeComNotifyInput): string {
 
   const metaLines = [
     `> **环境**：${input.testEnv}`,
-    `> **目标**：${input.target}`,
+    `> **目标**：${formatReportTargetLabel(input.target)}`,
   ];
+  const scopeLabel = formatReportScopeLabel(input.scope);
+  if (scopeLabel !== formatReportTargetLabel(input.target)) {
+    metaLines.push(`> **范围**：${scopeLabel}`);
+  }
   if (pipelineUrl) {
     metaLines.push(`> **流水线**：${formatPipelineRef(pipelineUrl, pipelineIid, pipelineId)}`);
   }
@@ -409,7 +415,8 @@ function hasFlag(args: string[], name: string): boolean {
 
 async function runCli(argv: string[]): Promise<number> {
   const testEnv = readArg(argv, '--env') ?? process.env.TEST_ENV ?? '13';
-  const target = readArg(argv, '--target') ?? 'api';
+  const target = readArg(argv, '--target') ?? 'all';
+  const scope = readArg(argv, '--scope');
   const exitCode = parseExitCode(readArg(argv, '--exit-code'));
   const junitFile = readArg(argv, '--junit') ?? 'reports/latest/junit.xml';
 
@@ -417,6 +424,7 @@ async function runCli(argv: string[]): Promise<number> {
     await sendWeComNotification({
       testEnv,
       target,
+      scope,
       exitCode,
       junitFile,
       enhancedReportUrl: readArg(argv, '--enhanced-report-url'),
