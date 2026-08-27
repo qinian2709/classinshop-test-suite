@@ -159,5 +159,5 @@ CI 使用 `playwright-enhanced-reporter`，产物在 Job Artifacts：
 
 ## 9. CI
 
-见 `.gitlab-ci.yml`。分支 `13/14/im` 推送或定时任务触发；
+见 `.gitlab-ci.yml`。仅 **定时任务** 或 **手动 Run pipeline** 触发；推送 / 合并请求不跑。
 在 GitLab CI/CD Variables 配置 `TEST_TOKEN`、`MOBILE_BASE_URL` 等（建议 Masked）。

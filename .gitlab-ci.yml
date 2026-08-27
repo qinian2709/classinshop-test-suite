@@ -1,5 +1,5 @@
 # classinshop-test-suite CI：运行接口自动化与 E2E，产出统一报告。
-# 与其他仓库一致，按分支 13/14/im 触发；并支持定时（schedule）夜间回归。
+# 仅定时（schedule）夜间回归和手动 Run pipeline 触发；推送 / 合并不创建流水线。
 #
 # 需要在 GitLab CI/CD Variables 中配置的被测环境凭据（Token、店铺域名等），见 docs/run-guide.md。
 # Schedule 执行配置（跑哪些项目、发布报告、企微）见 docs/pipeline-schedule-variables.md。
@@ -12,9 +12,10 @@
 # 静态报告发布成功后，企微通知默认最多等待 30s（WECOM_PUBLISH_WAIT_SECONDS）再发送，避免 Coolify 未部署完导致 404。
 #
 # test-suite 执行策略：
-#   分支推送 / 合并请求：固定只跑 api demo（tests/api/api-demo.spec.ts），验证未改动环境
+#   不在推送 / 合并时跑流水线，避免每次合码都占 Runner、钉住 Git 对象
 #   定时任务 schedule：通过 TEST_SUITE_PROJECTS 选择 api | e2e-web | e2e-mobile（逗号分隔）
 #                       未配置时默认 api（全量 tests/api，非 demo）
+#   手动 Run pipeline（web）：与 schedule 相同，可用变量覆盖环境和项目
 # Schedule 变量完整说明见 docs/pipeline-schedule-variables.md
 # 报告发布到 Coolify 静态站点（推荐）：
 #   REPORT_PUBLISH_BASE_URL=https://classinshop-test-reports.coolify.eeo-inc.com
@@ -39,16 +40,10 @@ variables:
 
 workflow:
   rules:
-    # 分支 13/14/im 推送时运行
-    - if: $CI_COMMIT_BRANCH =~ /^(13|14|im)$/
-    # 开发分支（含报告清理 Job）
-    - if: $CI_COMMIT_BRANCH == "test0616"
-    # 定时任务（夜间回归 / 报告清理）运行
+    # 仅定时回归 / 报告清理
     - if: $CI_PIPELINE_SOURCE == "schedule"
-    # 合并请求运行（只跑接口冒烟）
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    # 手动触发报告清理：Run pipeline + SCHEDULE_CLEANUP_REPORTS=1
-    - if: $CI_PIPELINE_SOURCE == "web" && $SCHEDULE_CLEANUP_REPORTS == "1"
+    # 手动 Run pipeline：测试或报告清理
+    - if: $CI_PIPELINE_SOURCE == "web"
 
 stages:
   - prepare
@@ -62,25 +57,14 @@ stages:
       when: never
     - when: on_success
 
-# 根据分支推导被测环境；schedule / MR / 未知分支默认 14，可用 SCHEDULE_TEST_ENV 覆盖。
+# 根据 Schedule / 手动流水线变量推导被测环境；默认 14。
 prepare:
   extends: .skip_on_cleanup_schedule
   stage: prepare
   image: ${PLAYWRIGHT_IMAGE}
   script:
     - |
-      if [ "${CI_PIPELINE_SOURCE}" = "schedule" ]; then
-        test_env="${SCHEDULE_TEST_ENV:-14}"
-      elif [ "${CI_PIPELINE_SOURCE}" = "merge_request_event" ]; then
-        test_env="${SCHEDULE_TEST_ENV:-14}"
-      else
-        case "${CI_COMMIT_BRANCH}" in
-          13) test_env="13" ;;
-          14) test_env="14" ;;
-          im) test_env="im" ;;
-          *) test_env="14" ;;
-        esac
-      fi
+      test_env="${SCHEDULE_TEST_ENV:-14}"
       echo "TEST_ENV=$test_env" > deploy.env
       cat deploy.env
   artifacts:
