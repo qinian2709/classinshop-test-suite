@@ -186,14 +186,14 @@ export interface StudentAppointmentOrderItem {
 export async function provisionStudentAppointmentOrderItem(
   merchantApi: ApiHelper,
   mobileApi: ApiHelper,
-  options: { shopId: string | number; data?: DataRegistry; keep?: boolean },
+  options: { shopId: string | number; data?: DataRegistry; keep?: boolean; namePrefix?: string },
 ): Promise<StudentAppointmentOrderItem | null> {
   const goods = await provisionPublishedAppointmentGoods(merchantApi, {
     shopId: options.shopId,
     data: options.data,
     keep: options.keep,
     price: 0,
-    namePrefix: 'flow约课测试课',
+    namePrefix: options.namePrefix ?? 'flow约课测试课',
   });
   if (!goods || goods.goodsType !== GOODS_TYPE_APPOINTMENT) return null;
 

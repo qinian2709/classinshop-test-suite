@@ -485,6 +485,7 @@ export async function prepareBookableAppointment(): Promise<BookableAppointmentO
   const item = await provisionStudentAppointmentOrderItem(merchant, student, {
     shopId: configEnv.shopId,
     data,
+    namePrefix: 'UI预约课',
   });
   if (!item) {
     await data.runAll();
@@ -500,7 +501,7 @@ export async function prepareBookableAppointment(): Promise<BookableAppointmentO
   }
   if (teacherId) {
     await provisionTeacherAvailableSlots(merchant, configEnv.shopId, teacherId, {
-      dates: [futureLocalDate(1), futureLocalDate(2), futureLocalDate(3), futureLocalDate(8)],
+      dates: [futureLocalDate(2), futureLocalDate(3), futureLocalDate(8)],
       startHhmms: sparseTeacherSlotStarts(4),
       durationMin: 60,
     });

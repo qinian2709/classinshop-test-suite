@@ -225,7 +225,7 @@ function payloadFromDetail(detail: GoodsDetail, overrides: Partial<GoodsPayload>
 function timeLabel(): string {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
-  return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  return `${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
 async function uploadGoodsCover(api: ApiHelper): Promise<string> {
