@@ -15,6 +15,7 @@ test.describe('H5 商城冒烟 @smoke', () => {
 
     await expect(page, 'H5 首页应设置页面标题').toHaveTitle(/.+/);
     expect((await home.appShellText()).length, 'H5 首页应渲染应用外壳').toBeGreaterThan(0);
+    await expect(home.tabItem('首页'), '首页应展示底部首页 Tab').toBeVisible();
     expect(errors, `页面 JS 报错：\n${errors.join('\n')}`).toHaveLength(0);
   });
 

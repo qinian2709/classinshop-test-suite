@@ -44,6 +44,14 @@ test.describe('H5 商品搜索与购买弹层 @smoke', () => {
     await attachStepScreenshot(page, testInfo, '02-商品详情已展示');
   });
 
+  test('搜索不存在的商品应展示空态', async ({ page }, testInfo) => {
+    const keyword = `不存在的商品-${Date.now()}`;
+    await page.goto(`/search?keyword=${encodeURIComponent(keyword)}`, { waitUntil: 'domcontentloaded' });
+    await expect(page.getByPlaceholder('搜索商品名称'), '搜索页应展示商品搜索框').toBeVisible();
+    await expect(page.getByText('未找到相关商品', { exact: true }), '无匹配商品时应展示空态').toBeVisible();
+    await attachStepScreenshot(page, testInfo, '01-商品搜索空态已展示');
+  });
+
   test('商品详情可打开购买确认弹层但不发起支付', async ({ page }, testInfo) => {
     const shop = await resolveMobileShopContext(testInfo);
     const goods = await findPublishedMobileGoods(testInfo, shop);

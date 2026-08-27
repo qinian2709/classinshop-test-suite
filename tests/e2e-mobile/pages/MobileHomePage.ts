@@ -20,6 +20,15 @@ export class MobileHomePage {
     return this.page.locator('[class*="tab-bar" i], .adm-tab-bar').first();
   }
 
+  tabItem(name: '首页' | '学习' | '我的'): Locator {
+    return this.tabBar.getByText(name, { exact: true });
+  }
+
+  async gotoTab(name: '首页' | '学习' | '我的'): Promise<void> {
+    await this.tabItem(name).click();
+    await this.page.locator('#root').waitFor({ state: 'attached', timeout: 15_000 });
+  }
+
   async appShellText(): Promise<string> {
     return (await this.page.locator('#root').textContent())?.trim() ?? '';
   }

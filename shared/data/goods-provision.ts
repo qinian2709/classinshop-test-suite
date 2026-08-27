@@ -2,8 +2,11 @@
  * 测试商品上架（与 goods-management.spec.ts 同口径）：
  *   - 固定课 goodsType=1：basePayload → 编辑绑定 ClassIn 班级 → 上架
  *   - 预约课 goodsType=3：basePayload + appointment + teacherIds/hoursCount → 编辑 → 上架
+ *   - 录播课 goodsType=4：COS 上传视频/资料 → 转码成功 → catalog + recorded 上架
  */
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ApiHelper } from '../fixtures/api-helper.js';
 import { Endpoints } from '../api/endpoints.js';
 import { INFRA_API_OPTS, withInfraApiOpts } from './infra.js';
@@ -17,6 +20,13 @@ const goodsCoverFile = new URL('../../tests/api/fixtures/goods-cover.png.base64'
 export const GOODS_TYPE_FIXED = 1;
 /** 预约课 */
 export const GOODS_TYPE_APPOINTMENT = 3;
+/** 录播课 */
+export const GOODS_TYPE_RECORDED = 4;
+
+const TRANSCODE_SUCCESS = 3;
+const TRANSCODE_FAILED = 4;
+const TRANSCODE_POLL_MS = 3_000;
+const TRANSCODE_TIMEOUT_MS = 5 * 60_000;
 
 interface IdResult {
   id: number;
@@ -32,6 +42,11 @@ interface GoodsProduct {
   hoursCount?: number;
   classes?: unknown[];
   teachers?: unknown[];
+  catalog?: Array<{
+    activities?: Array<{
+      files?: Array<{ id?: number; fileType?: string; transcodeJobId?: string }>;
+    }>;
+  }>;
 }
 
 interface GoodsDetail {
@@ -77,6 +92,32 @@ interface SaveGoodsProduct {
   attrs: unknown[];
   hoursCount?: number;
   teacherIds?: number[];
+  catalog?: CourseCatalogUnit[];
+}
+
+interface CourseCatalogFile {
+  name: string;
+  fileType: string;
+  objectKey: string;
+  playObjectKey?: string;
+  transcodeJobId?: string;
+  transcodeStatus?: number;
+  videoSource?: number;
+  duration?: number;
+  fileSize?: number;
+  allowDownload?: number;
+}
+
+interface CourseCatalogActivity {
+  title: string;
+  description?: string;
+  allowPreview: number;
+  files: CourseCatalogFile[];
+}
+
+interface CourseCatalogUnit {
+  title: string;
+  activities: CourseCatalogActivity[];
 }
 
 interface GoodsPayload {
@@ -91,6 +132,12 @@ interface GoodsPayload {
   hasPhysicalGoods: number;
   goodsType: number;
   appointment?: Record<string, number>;
+  recorded?: {
+    validityValue: number;
+    validityUnit: number;
+    enableMobileWeb?: boolean;
+    enableMarquee?: boolean;
+  };
   products: SaveGoodsProduct[];
 }
 
@@ -109,7 +156,13 @@ function baseProduct(overrides: Partial<SaveGoodsProduct> = {}): SaveGoodsProduc
   };
 }
 
-function basePayload(kind: 'fixed' | 'appointment', name: string, pic: string): GoodsPayload {
+function basePayload(kind: 'fixed' | 'appointment' | 'recorded', name: string, pic: string): GoodsPayload {
+  const goodsType =
+    kind === 'appointment'
+      ? GOODS_TYPE_APPOINTMENT
+      : kind === 'recorded'
+        ? GOODS_TYPE_RECORDED
+        : GOODS_TYPE_FIXED;
   return {
     name,
     summary: `${name} 简介`,
@@ -119,7 +172,7 @@ function basePayload(kind: 'fixed' | 'appointment', name: string, pic: string): 
     contactQrCode: '',
     attrsSelectType: 0,
     hasPhysicalGoods: 0,
-    goodsType: kind === 'appointment' ? GOODS_TYPE_APPOINTMENT : GOODS_TYPE_FIXED,
+    goodsType,
     products: [baseProduct()],
   };
 }
@@ -267,10 +320,13 @@ async function publishAndValidate(
   if (expectedGoodsType === GOODS_TYPE_FIXED) {
     if (finalDetail.data.appointment) return null;
     if (!product.classes?.length) return null;
-  } else {
+  } else if (expectedGoodsType === GOODS_TYPE_APPOINTMENT) {
     if (!finalDetail.data.appointment) return null;
     if (product.classes?.length) return null;
     if (!product.hoursCount || product.hoursCount <= 0) return null;
+  } else if (expectedGoodsType === GOODS_TYPE_RECORDED) {
+    if (finalDetail.data.appointment) return null;
+    if (product.classes?.length) return null;
   }
 
   return finalDetail.data;
@@ -425,4 +481,243 @@ export async function provisionPublishedAppointmentGoods(
     goodsType: finalDetail.goodsType,
     teacherId: teacher.id,
   };
+}
+
+export const RECORDED_UNIT_TITLE = '自动化单元';
+export const RECORDED_VIDEO_ACTIVITY_TITLE = '导学视频';
+export const RECORDED_DOC_ACTIVITY_TITLE = '配套资料';
+
+const recordedDataDir = fileURLToPath(new URL('../../tests/e2e-mobile/data/', import.meta.url));
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function findRecordedFixture(exts: string[]): Promise<{ absPath: string; fileName: string } | null> {
+  const names = await fs.readdir(recordedDataDir).catch(() => [] as string[]);
+  const fileName = names.find((name) => exts.some((ext) => name.toLowerCase().endsWith(ext)));
+  if (!fileName) return null;
+  return { absPath: path.join(recordedDataDir, fileName), fileName };
+}
+
+async function uploadCourseObject(
+  api: ApiHelper,
+  shopId: string | number,
+  absPath: string,
+  uploadName: string,
+  subdir: 'video' | 'doc',
+  contentType: string,
+): Promise<{ objectKey: string; fileSize: number } | null> {
+  const { body: sign } = await api.get<{ uploadUrl: string; objectKey: string }>(
+    Endpoints.system.cosSign,
+    withInfraApiOpts({
+      query: {
+        fileName: uploadName,
+        dir: `files/origin/${shopId}/${subdir}`,
+        noBaseDir: true,
+      },
+    }),
+  );
+  if (sign.code !== SUCCESS_CODE || !sign.data?.uploadUrl || !sign.data.objectKey) return null;
+
+  const file = await fs.readFile(absPath);
+  const uploadResponse = await fetch(sign.data.uploadUrl, {
+    method: 'PUT',
+    headers: { 'content-type': contentType },
+    body: new Blob([file], { type: contentType }),
+  });
+  if (!uploadResponse.ok) return null;
+  return { objectKey: sign.data.objectKey, fileSize: file.byteLength };
+}
+
+async function transcodeCourseVideo(
+  api: ApiHelper,
+  shopId: string | number,
+  objectKey: string,
+): Promise<{ playObjectKey: string; transcodeJobId: string; duration: number } | null> {
+  const { body: submitted } = await api.post<{
+    jobId?: string;
+    playObjectKey?: string;
+    transcodeStatus?: number;
+    duration?: number;
+  }>(Endpoints.shopAdmin.courseVideoTranscode(shopId), { objectKey }, INFRA_API_OPTS);
+  const jobId = submitted.data?.jobId;
+  if (submitted.code !== SUCCESS_CODE || !jobId) return null;
+
+  const polled = await pollCourseVideoTranscode(api, shopId, jobId);
+  if (!polled) return null;
+  return { ...polled, duration: polled.duration || Number(submitted.data?.duration ?? 0) };
+}
+
+async function pollCourseVideoTranscode(
+  api: ApiHelper,
+  shopId: string | number,
+  jobId: string,
+  fileId?: number,
+): Promise<{ playObjectKey: string; transcodeJobId: string; duration: number } | null> {
+  const started = Date.now();
+  while (Date.now() - started < TRANSCODE_TIMEOUT_MS) {
+    const { body: statusBody } = await api.get<{
+      playObjectKey?: string;
+      transcodeStatus?: number;
+      duration?: number;
+      message?: string;
+    }>(
+      Endpoints.shopAdmin.courseVideoTranscodeStatus(shopId),
+      withInfraApiOpts({ query: { jobId, fileId } }),
+    );
+    const status = Number(statusBody.data?.transcodeStatus);
+    if (status === TRANSCODE_SUCCESS && statusBody.data?.playObjectKey) {
+      return {
+        playObjectKey: statusBody.data.playObjectKey,
+        transcodeJobId: jobId,
+        duration: Number(statusBody.data.duration ?? 0),
+      };
+    }
+    if (status === TRANSCODE_FAILED) return null;
+    await sleep(TRANSCODE_POLL_MS);
+  }
+  return null;
+}
+
+/**
+ * 录播课：上传 data 目录视频+资料 → 转码成功 → 创建零元商品（可试看）→ 上架。
+ */
+export async function provisionPublishedRecordedGoods(
+  api: ApiHelper,
+  options: ProvisionPublishedGoodsOptions,
+): Promise<PublishedGoodsResult | null> {
+  const {
+    shopId,
+    data,
+    price = 0,
+    namePrefix = 'flow录播课',
+  } = options;
+  const keep = shouldKeepGoods(options);
+
+  const videoFixture = await findRecordedFixture(['.mov', '.mp4', '.m4v']);
+  const docFixture = await findRecordedFixture(['.docx', '.pdf']);
+  if (!videoFixture || !docFixture) return null;
+
+  const stamp = timeLabel();
+  const coverUrl = await uploadGoodsCover(api);
+  const videoUpload = await uploadCourseObject(
+    api,
+    shopId,
+    videoFixture.absPath,
+    'recorded-e2e.mp4',
+    'video',
+    'video/mp4',
+  );
+  if (!videoUpload) return null;
+
+  const transcoded = await transcodeCourseVideo(api, shopId, videoUpload.objectKey);
+  if (!transcoded) return null;
+
+  const docUpload = await uploadCourseObject(
+    api,
+    shopId,
+    docFixture.absPath,
+    docFixture.fileName.replace(/[^\w.\u4e00-\u9fa5-]+/g, '_') || 'recorded-e2e.docx',
+    'doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  );
+  if (!docUpload) return null;
+
+  const catalog: CourseCatalogUnit[] = [
+    {
+      title: RECORDED_UNIT_TITLE,
+      activities: [
+        {
+          title: RECORDED_VIDEO_ACTIVITY_TITLE,
+          description: 'E2E 可试看视频',
+          allowPreview: 1,
+          files: [
+            {
+              name: videoFixture.fileName,
+              fileType: 'video',
+              objectKey: videoUpload.objectKey,
+              playObjectKey: transcoded.playObjectKey,
+              transcodeJobId: transcoded.transcodeJobId,
+              transcodeStatus: TRANSCODE_SUCCESS,
+              videoSource: 1,
+              duration: transcoded.duration,
+              fileSize: videoUpload.fileSize,
+              allowDownload: 0,
+            },
+          ],
+        },
+        {
+          title: RECORDED_DOC_ACTIVITY_TITLE,
+          description: 'E2E 可试看资料',
+          allowPreview: 1,
+          files: [
+            {
+              name: docFixture.fileName,
+              fileType: 'docx',
+              objectKey: docUpload.objectKey,
+              fileSize: docUpload.fileSize,
+              allowDownload: 1,
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  const priceFields = { price, originalPrice: price > 0 ? 199 : 0 };
+  const createPayload: GoodsPayload = {
+    ...basePayload('recorded', `${namePrefix}-${stamp}`, coverUrl),
+    recorded: {
+      validityValue: 0,
+      validityUnit: 1,
+      enableMobileWeb: true,
+      enableMarquee: false,
+    },
+    products: [baseProduct({ ...priceFields, catalog })],
+  };
+
+  const { body: created } = await api.post<IdResult>(
+    Endpoints.shopAdmin.goodsCreate(shopId),
+    createPayload,
+    INFRA_API_OPTS,
+  );
+  if (created.code !== SUCCESS_CODE || !created.data?.id) return null;
+  const goodsId = created.data.id;
+
+  if (!keep && data) {
+    data.register(`删除 flow 录播课 ${goodsId}`, async () => {
+      await api.post(Endpoints.shopAdmin.goodsDelete(shopId), { goodsId }, INFRA_API_OPTS);
+    });
+  }
+
+  const finalDetail = await publishAndValidate(api, shopId, goodsId, GOODS_TYPE_RECORDED);
+  if (!finalDetail?.products[0]?.id) return null;
+
+  // 保存目录时后端会把新建视频写成 transcode_status=已提交，需带 fileId 再同步一次才能播。
+  const videoFileId = findRecordedVideoFileId(finalDetail);
+  if (videoFileId) {
+    const synced = await pollCourseVideoTranscode(api, shopId, transcoded.transcodeJobId, videoFileId);
+    if (!synced) return null;
+  }
+
+  return {
+    goodsId,
+    skuId: finalDetail.products[0].id,
+    title: finalDetail.name,
+    goodsType: finalDetail.goodsType,
+  };
+}
+
+function findRecordedVideoFileId(detail: GoodsDetail): number | null {
+  for (const unit of detail.products[0]?.catalog ?? []) {
+    for (const activity of unit.activities ?? []) {
+      for (const file of activity.files ?? []) {
+        if (file.fileType === 'video' && Number(file.id) > 0) return Number(file.id);
+      }
+    }
+  }
+  return null;
 }
