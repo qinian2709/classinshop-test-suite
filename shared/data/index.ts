@@ -27,7 +27,7 @@ export {
   pickNumber,
   asArray,
 } from './discovery.js';
-export { provisionPublishedAppointmentGoods, provisionPublishedFixedGoods, GOODS_TYPE_FIXED, GOODS_TYPE_APPOINTMENT } from './goods-provision.js';
+export { provisionPublishedAppointmentGoods, provisionPublishedFixedGoods, provisionPublishedRecordedGoods, GOODS_TYPE_FIXED, GOODS_TYPE_APPOINTMENT, GOODS_TYPE_RECORDED, RECORDED_UNIT_TITLE, RECORDED_VIDEO_ACTIVITY_TITLE, RECORDED_DOC_ACTIVITY_TITLE } from './goods-provision.js';
 export type { ProvisionPublishedGoodsOptions } from './goods-provision.js';
 export {
   provisionTeacherAvailableSlots,

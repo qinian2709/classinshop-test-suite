@@ -117,6 +117,9 @@ export const Endpoints = {
     goodsDetail: (shopId: string | number, goodsId: string | number) =>
       `/shop/${shopId}/goods/${goodsId}`,
     goodsList: (shopId: string | number) => `/shop/${shopId}/goods/list`,
+    courseVideoTranscode: (shopId: string | number) => `/shop/${shopId}/course/video/transcode`,
+    courseVideoTranscodeStatus: (shopId: string | number) =>
+      `/shop/${shopId}/course/video/transcode-status`,
     attributeCreate: (shopId: string | number) => `/shop/${shopId}/goods/attribute/create`,
     attributeList: (shopId: string | number) => `/shop/${shopId}/goods/attribute/list`,
     // 约课老师

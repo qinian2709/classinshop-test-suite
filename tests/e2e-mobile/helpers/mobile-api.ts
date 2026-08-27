@@ -1,5 +1,21 @@
 import { accounts, env as configEnv, formatAuthorizationHeader } from '@config';
-import { Endpoints, SUCCESS_CODE } from '@shared';
+import {
+  ApiHelper,
+  DataRegistry,
+  Endpoints,
+  SUCCESS_CODE,
+  asArray,
+  authHeader,
+  browserHeaders,
+  buildAddressPayload,
+  futureLocalDate,
+  pickNumber,
+  cleanupRefundMerchantOrder,
+  provisionPublishedRecordedGoods,
+  provisionStudentAppointmentOrderItem,
+  provisionTeacherAvailableSlots,
+  sparseTeacherSlotStarts,
+} from '@shared';
 import type { ApiResponse, ListData } from '@shared/http/types.js';
 import type { TestInfo } from '@playwright/test';
 
@@ -280,4 +296,259 @@ export async function stopCoupon(testInfo: TestInfo, shopId: number, couponId: n
     logName: '请求日志-H5-停用优惠券清理.json',
     assertions: ['停用 H5 UI 测试券模板'],
   });
+}
+
+export interface CreatedAddress {
+  id: number;
+  receiverName: string;
+  detailAddress: string;
+}
+
+export interface MobileOrderSummary {
+  orderItemsId: number;
+  repoName: string;
+}
+
+function shopDomainHeaders(shop: Pick<MobileShopContext, 'shopDomain'>): Record<string, string> {
+  return { 'X-Shop-Domain': shop.shopDomain };
+}
+
+export async function createTestAddress(
+  testInfo: TestInfo,
+  shop: Pick<MobileShopContext, 'shopDomain'>,
+): Promise<CreatedAddress> {
+  if (!accounts.mobileToken) throw new Error('未配置 MOBILE_TEST_TOKEN，无法创建地址前置数据');
+
+  const payload = buildAddressPayload({
+    receiverName: uniqueUiName('UI收货人'),
+    isDefault: false,
+  });
+  const created = await requestMobileJson<unknown>(testInfo, 'POST', Endpoints.user.addressCreate, {
+    token: accounts.mobileToken,
+    headers: shopDomainHeaders(shop),
+    data: payload,
+    logName: '请求日志-H5-创建地址.json',
+    assertions: ['C 端应能创建 H5 地址管理测试地址'],
+  });
+  if (created.body.code !== SUCCESS_CODE) {
+    throw new Error(`创建地址失败：code=${created.body.code}, msg=${created.body.msg}`);
+  }
+  const id = pickNumber(created.body.data, ['id', 'addressId', 'address_id']);
+  if (!id) {
+    throw new Error('创建地址成功但未返回 addressId');
+  }
+  return { id, receiverName: payload.receiverName, detailAddress: payload.detailAddress };
+}
+
+export async function deleteTestAddress(
+  testInfo: TestInfo,
+  shop: Pick<MobileShopContext, 'shopDomain'>,
+  addressId: number,
+): Promise<void> {
+  if (!accounts.mobileToken) return;
+  await requestMobileJson<null>(testInfo, 'POST', Endpoints.user.addressDelete, {
+    token: accounts.mobileToken,
+    headers: shopDomainHeaders(shop),
+    data: { id: addressId },
+    logName: '请求日志-H5-删除地址清理.json',
+    assertions: ['删除 H5 UI 测试地址'],
+  });
+}
+
+export async function findUserOrder(
+  testInfo: TestInfo,
+  shop: Pick<MobileShopContext, 'shopDomain'>,
+): Promise<MobileOrderSummary | undefined> {
+  if (!accounts.mobileToken) return undefined;
+  const list = await requestMobileJson<ListData<Record<string, unknown>>>(
+    testInfo,
+    'GET',
+    Endpoints.user.orders,
+    {
+      token: accounts.mobileToken,
+      headers: shopDomainHeaders(shop),
+      query: { page: 1, limit: 10, orderStatus: -1, study: 0 },
+      logName: '请求日志-H5-我的订单.json',
+      assertions: ['H5 购课订单列表应可访问'],
+    },
+  );
+  if (list.body.code !== SUCCESS_CODE) {
+    throw new Error(`查询购课订单失败：code=${list.body.code}, msg=${list.body.msg}`);
+  }
+
+  for (const item of asArray(list.body.data)) {
+    const orderItemsId = pickNumber(item, ['orderItemsId', 'order_items_id', 'id']);
+    if (!orderItemsId) continue;
+    const repo = item['repo'];
+    const repoName =
+      (typeof item['repoName'] === 'string' && item['repoName']) ||
+      (repo && typeof repo === 'object' && typeof (repo as { name?: string }).name === 'string'
+        ? (repo as { name: string }).name
+        : '') ||
+      '';
+    return { orderItemsId, repoName };
+  }
+  return undefined;
+}
+
+function uniqueUiName(prefix: string): string {
+  const stamp = formatTime();
+  return `${prefix}-${stamp}`;
+}
+
+export interface UserAddressSummary {
+  id: number;
+  receiverName: string;
+  detailAddress: string;
+  isDefault: boolean;
+}
+
+const TEST_ADDRESS_NAME = /^(?:(?:UI)?收货人-|自动化更新姓名)/;
+
+export async function listUserAddresses(
+  testInfo: TestInfo,
+  shop: Pick<MobileShopContext, 'shopDomain'>,
+): Promise<UserAddressSummary[]> {
+  if (!accounts.mobileToken) return [];
+  const list = await requestMobileJson<unknown>(testInfo, 'GET', Endpoints.user.addressList, {
+    token: accounts.mobileToken,
+    headers: shopDomainHeaders(shop),
+    logName: '请求日志-H5-地址列表.json',
+    assertions: ['H5 地址列表应可访问'],
+  });
+  if (list.body.code !== SUCCESS_CODE) {
+    throw new Error(`查询地址列表失败：code=${list.body.code}, msg=${list.body.msg}`);
+  }
+  return asArray(list.body.data)
+    .map((item) => {
+      const id = pickNumber(item, ['id', 'addressId', 'address_id']);
+      if (!id) return undefined;
+      return {
+        id,
+        receiverName: typeof item['receiverName'] === 'string' ? item['receiverName'] : '',
+        detailAddress: typeof item['detailAddress'] === 'string' ? item['detailAddress'] : '',
+        isDefault: Boolean(item['isDefault']),
+      };
+    })
+    .filter((item): item is UserAddressSummary => Boolean(item));
+}
+
+export async function pruneTestAddresses(
+  testInfo: TestInfo,
+  shop: Pick<MobileShopContext, 'shopDomain'>,
+): Promise<void> {
+  const addresses = await listUserAddresses(testInfo, shop);
+  for (const address of addresses) {
+    if (!TEST_ADDRESS_NAME.test(address.receiverName)) continue;
+    await deleteTestAddress(testInfo, shop, address.id);
+  }
+}
+
+export interface BookableAppointmentOrder {
+  orderItemId: number;
+  goodsName: string;
+  cleanup: () => Promise<void>;
+}
+
+function createShopApis(): { merchant: ApiHelper; student: ApiHelper } {
+  const shopHeaders = configEnv.mobileBaseURL ? { 'X-Shop-Domain': configEnv.mobileBaseURL } : {};
+  const merchant = new ApiHelper(
+    configEnv.apiBaseURL,
+    {
+      ...browserHeaders(),
+      ...authHeader(accounts.token),
+      ...shopHeaders,
+    },
+    { maxResponseMs: 0 },
+  );
+  const student = new ApiHelper(
+    configEnv.apiBaseURL,
+    {
+      ...browserHeaders(),
+      ...authHeader(accounts.mobileToken),
+      ...shopHeaders,
+    },
+    { maxResponseMs: 0 },
+  );
+  return { merchant, student };
+}
+
+/**
+ * 对齐 API 约课 fixture：上架零元预约课 → 学生下单 → 写入老师可约时段。
+ * UI 用例把这步当前置，报告焦点仍在页面操作。
+ */
+export async function prepareBookableAppointment(): Promise<BookableAppointmentOrder | null> {
+  if (!configEnv.shopId || !accounts.token || !accounts.mobileToken) return null;
+
+  const data = new DataRegistry();
+  const { merchant, student } = createShopApis();
+  const item = await provisionStudentAppointmentOrderItem(merchant, student, {
+    shopId: configEnv.shopId,
+    data,
+  });
+  if (!item) {
+    await data.runAll();
+    return null;
+  }
+
+  let teacherId = item.teacherId;
+  if (!teacherId) {
+    const teachers = await student.get(Endpoints.appointment.orderTeachers(item.orderItemId), {
+      maxDurationMs: 0,
+    });
+    teacherId = pickNumber(asArray(teachers.body.data)[0], ['id', 'teacherId', 'teacher_id']);
+  }
+  if (teacherId) {
+    await provisionTeacherAvailableSlots(merchant, configEnv.shopId, teacherId, {
+      dates: [futureLocalDate(1), futureLocalDate(2), futureLocalDate(3), futureLocalDate(8)],
+      startHhmms: sparseTeacherSlotStarts(4),
+      durationMin: 60,
+    });
+  }
+
+  return {
+    orderItemId: item.orderItemId,
+    goodsName: item.title || `预约课订单 ${item.orderItemId}`,
+    cleanup: () => data.runAll(),
+  };
+}
+
+export interface PurchasableRecordedCourse {
+  goodsId: number;
+  goodsName: string;
+  attachPaidOrder: (orderId: number) => void;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * 上架零元可试看录播课（data 目录视频+资料，转码成功后才返回）。
+ * 下单仍走 H5 UI，成功后用 attachPaidOrder 登记退款。
+ */
+export async function preparePurchasableRecordedCourse(): Promise<PurchasableRecordedCourse | null> {
+  if (!configEnv.shopId || !accounts.token || !accounts.mobileToken) return null;
+
+  const data = new DataRegistry();
+  const { merchant } = createShopApis();
+  const goods = await provisionPublishedRecordedGoods(merchant, {
+    shopId: configEnv.shopId,
+    data,
+    price: 0,
+    namePrefix: 'UI录播课',
+  });
+  if (!goods) {
+    await data.runAll();
+    return null;
+  }
+
+  return {
+    goodsId: goods.goodsId,
+    goodsName: goods.title,
+    attachPaidOrder: (orderId) => {
+      if (!orderId) return;
+      data.register(`退款录播课订单 ${orderId}`, async () => {
+        await cleanupRefundMerchantOrder(merchant, configEnv.shopId!, orderId, 0);
+      });
+    },
+    cleanup: () => data.runAll(),
+  };
 }
