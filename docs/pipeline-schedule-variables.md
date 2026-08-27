@@ -19,7 +19,7 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 4. 若配置了 `REPORT_PUBLISH_*` → push 到 Coolify 静态站
 5. 发送企微通知（报告链接优先 Coolify URL）
 
-与 **分支推送 / MR** 不同：Schedule **不会**跑 api demo，**默认跑全量 API**。
+与 **推送 / MR** 不同：本仓库已关闭 push 和 merge 流水线；Schedule **不会**跑 api demo，**默认跑全量 API**。
 
 ---
 
@@ -66,7 +66,7 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 
 ## 4. `TEST_SUITE_PROJECTS` 说明
 
-**仅 Schedule 生效**；分支 Push / MR 固定 api demo，**忽略**此变量。
+**仅 Schedule / 手动 Run pipeline 生效**；推送和合并请求不再创建流水线，因此也不会读此变量。
 
 | 取值 | 含义 |
 |------|------|
@@ -78,13 +78,13 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 
 ---
 
-## 5. 与分支 Push / MR 的差异
+## 5. 触发方式
 
 | 触发方式 | 测试范围 | `TEST_SUITE_PROJECTS` | `SCHEDULE_TEST_ENV` |
 |---------|---------|----------------------|---------------------|
 | **Schedule** | 由变量控制 | **生效** | **生效** |
-| 分支推送 13/14/im | 固定 api demo | 忽略 | 忽略（按分支名推导环境） |
-| 合并请求 MR | 固定 api demo | 忽略 | 忽略（默认 14） |
+| **手动 Run pipeline（web）** | 与 Schedule 相同 | **生效** | **生效** |
+| 分支推送 / 合并请求 | **不创建流水线** | — | — |
 
 ---
 

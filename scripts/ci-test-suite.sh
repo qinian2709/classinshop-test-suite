@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CI test-suite runner:
-# - branch push / MR: api demo only (smoke, no env breakage)
-# - schedule: TEST_SUITE_PROJECTS selects api | e2e-web | e2e-mobile; default api (full suite)
+# - schedule / web: TEST_SUITE_PROJECTS selects api | e2e-web | e2e-mobile; default api (full suite)
+# - push / MR no longer create pipelines (see .gitlab-ci.yml workflow)
 set -euo pipefail
 
 API_DEMO_SPEC='tests/api/api-demo.spec.ts'
@@ -45,17 +45,17 @@ validate_projects() {
 pipeline="${CI_PIPELINE_SOURCE:-local}"
 api_spec=""
 
-if [ "$pipeline" = "schedule" ]; then
+if [ "$pipeline" = "schedule" ] || [ "$pipeline" = "web" ]; then
   parse_projects "${TEST_SUITE_PROJECTS:-api}"
   validate_projects
-  echo "[ci-test-suite] schedule run, projects=$(IFS=+; echo "${projects[*]}")"
+  echo "[ci-test-suite] ${pipeline} run, projects=$(IFS=+; echo "${projects[*]}")"
   if printf '%s\n' "${projects[@]}" | grep -qx api; then
     echo "[ci-test-suite] api scope: full tests/api"
   fi
 else
   projects=(api)
   api_spec="$API_DEMO_SPEC"
-  echo "[ci-test-suite] branch/MR smoke: api demo (${API_DEMO_SPEC})"
+  echo "[ci-test-suite] unexpected source '${pipeline}': api demo (${API_DEMO_SPEC})"
 fi
 
 echo "NOTIFY_TARGET=all" > notify.env
