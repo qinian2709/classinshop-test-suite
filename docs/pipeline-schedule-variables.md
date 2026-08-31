@@ -42,6 +42,7 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 | `REPORT_PUBLISH_GIT_REPO` | 推荐 | — | 报告托管 Git 仓库 |
 | `REPORT_PUBLISH_GIT_TOKEN` | 推荐 | — | push 报告仓库的 PAT（Masked） |
 | `WECOM_WEBHOOK_URL` | 可选 | 见 `config/wecom.ts` | 覆盖默认企微 Webhook |
+| `WECOM_MENTION_MOBILES` | 可选 | 见 `config/wecom.ts` | 失败 @ 人的企微绑定手机号，逗号分隔；成功不 @ |
 | `WECOM_PUBLISH_WAIT_SECONDS` | 可选 | `30` | 发企微前等待报告 URL 就绪（秒），`0` 关闭 |
 | `REPORT_PUBLISH_MODE` | 可选 | 自动 | `coolify` / `rsync` / `local` |
 | `REPORT_PUBLISH_GIT_BRANCH` | 可选 | `main` | 报告仓库分支 |
@@ -53,6 +54,7 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 - **不配也能跑**：`SCHEDULE_TEST_ENV`、`TEST_SUITE_PROJECTS` 都有默认值，Schedule 会按默认跑 **14 环境 + 全量 API**。
 - **不配报告三件套**：测试和 GitLab Artifacts 仍有；只是 **不会** push Coolify，企微链接回退 Artifacts。
 - **不配 `WECOM_WEBHOOK_URL`**：使用代码内默认 Webhook。
+- **不配 `WECOM_MENTION_MOBILES`**：失败也不 @ 人；配了只在失败时 @（成功不 @）。
 
 ### 在线报告三件套（推荐一起配）
 

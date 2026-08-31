@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import { formatReportScopeLabel, formatReportTargetLabel } from './report-slot.js';
-import { resolveWeComWebhookUrl } from '../config/wecom.js';
+import { resolveWeComMentionMobiles, resolveWeComWebhookUrl } from '../config/wecom.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -385,32 +385,29 @@ interface WeComResponse {
   errmsg?: string;
 }
 
-export async function sendWeComNotification(
-  input: WeComNotifyInput,
-  webhookUrl = resolveWeComWebhookUrl(),
-): Promise<void> {
-  if (!webhookUrl) {
-    throw new Error('缺少企微 Webhook，请检查 config/wecom.ts 或环境变量 WECOM_WEBHOOK_URL。');
-  }
-
-  const content = buildWeComMarkdown(input);
-  const reportLinks = resolveReportLinks(input);
-  if (reportLinks.enhanced) {
-    console.log(`[wecom] Enhanced report URL: ${reportLinks.enhanced}`);
-    await waitForPublishedReport(reportLinks.enhanced, parsePublishWaitSeconds());
-  } else if (reportLinks.job) {
-    console.log(`[wecom] Fallback job URL: ${reportLinks.job}`);
-  } else if (reportLinks.localPath) {
-    console.log(`[wecom] Local report path: ${reportLinks.localPath}`);
-  } else {
-    console.warn('[wecom] No report URL resolved; notification will omit online report link.');
-  }
-
-  const payload = {
-    msgtype: 'markdown',
-    markdown: { content },
+export interface WeComTextMentionPayload {
+  msgtype: 'text';
+  text: {
+    content: string;
+    mentioned_mobile_list: string[];
   };
+}
 
+export function buildFailureMentionPayload(
+  status: '通过' | '失败' | '跳过',
+  mobiles = resolveWeComMentionMobiles(),
+): WeComTextMentionPayload | null {
+  if (status !== '失败' || mobiles.length === 0) return null;
+  return {
+    msgtype: 'text',
+    text: {
+      content: 'ClassInShop 测试失败，请查看上方报告。',
+      mentioned_mobile_list: mobiles,
+    },
+  };
+}
+
+async function postWeComWebhook(webhookUrl: string, payload: unknown): Promise<void> {
   const response = await fetch(webhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -424,6 +421,43 @@ export async function sendWeComNotification(
   const body = (await response.json()) as WeComResponse;
   if (body.errcode !== 0) {
     throw new Error(`企微 Webhook 返回错误 errcode=${body.errcode} errmsg=${body.errmsg ?? 'unknown'}`);
+  }
+}
+
+export async function sendWeComNotification(
+  input: WeComNotifyInput,
+  webhookUrl = resolveWeComWebhookUrl(),
+): Promise<void> {
+  if (!webhookUrl) {
+    throw new Error('缺少企微 Webhook，请检查 config/wecom.ts 或环境变量 WECOM_WEBHOOK_URL。');
+  }
+
+  const content = buildWeComMarkdown(input);
+  const summary = readJUnitSummary(input.junitFile);
+  const status = deriveStatus(input.exitCode, summary);
+  const reportLinks = resolveReportLinks(input);
+  if (reportLinks.enhanced) {
+    console.log(`[wecom] Enhanced report URL: ${reportLinks.enhanced}`);
+    await waitForPublishedReport(reportLinks.enhanced, parsePublishWaitSeconds());
+  } else if (reportLinks.job) {
+    console.log(`[wecom] Fallback job URL: ${reportLinks.job}`);
+  } else if (reportLinks.localPath) {
+    console.log(`[wecom] Local report path: ${reportLinks.localPath}`);
+  } else {
+    console.warn('[wecom] No report URL resolved; notification will omit online report link.');
+  }
+
+  await postWeComWebhook(webhookUrl, {
+    msgtype: 'markdown',
+    markdown: { content },
+  });
+
+  const mention = buildFailureMentionPayload(status);
+  if (mention) {
+    await postWeComWebhook(webhookUrl, mention);
+    console.log(`[wecom] Failure mention sent: ${mention.text.mentioned_mobile_list.join(',')}`);
+  } else if (status === '失败') {
+    console.log('[wecom] Failure mention skipped: set WECOM_MENTION_MOBILES or config/wecom.ts DEFAULT_WECOM_MENTION_MOBILES.');
   }
 
   console.log('[wecom] Notification sent successfully.');
