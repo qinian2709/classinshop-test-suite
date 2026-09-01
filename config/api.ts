@@ -11,3 +11,9 @@
  * - 单次请求仍可用 `CallOptions.maxDurationMs` / `ApiLogOptions.maxDurationMs` 覆盖
  */
 export const API_MAX_RESPONSE_MS = 2000;
+
+/**
+ * POST /shop/appointment/book 单独 SLA（ms）。
+ * 约课要锁时段、写预约记录，常慢于通用 2s；只覆盖这一条，不抬全局上限。
+ */
+export const API_APPOINTMENT_BOOK_MAX_RESPONSE_MS = 5000;
