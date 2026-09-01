@@ -6,7 +6,7 @@ import {
   loggedGet,
   loggedPost,
 } from '@shared';
-import { hasApiCredential, hasMobileCredential } from '@config';
+import { API_APPOINTMENT_BOOK_MAX_RESPONSE_MS, hasApiCredential, hasMobileCredential } from '@config';
 import {
   pickNumber,
   asArray,
@@ -283,6 +283,7 @@ test.describe('预约课约课链路（绑定老师）', () => {
           ...logBase,
           logName: `请求日志-约课链路-提交约课-${index + 1}.json`,
           assertions: ['约课接口应返回业务 code'],
+          maxDurationMs: API_APPOINTMENT_BOOK_MAX_RESPONSE_MS,
         }, Endpoints.appointment.book, payload);
         if (body.code === SUCCESS_CODE) {
           appointmentId = pickNumber(body.data, ['appointmentId', 'appointment_id', 'id']);
