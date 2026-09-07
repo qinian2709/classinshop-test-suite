@@ -209,7 +209,7 @@ export async function cancelAppointmentOnDetail(page: Page, appointmentId: numbe
   await expect(page.getByText('确认取消本节预约课时？'), '应弹出取消确认').toBeVisible();
   const cancelResponse = page.waitForResponse(
     (response) =>
-      response.url().includes(`/student/appointment/${appointmentId}/cancel`) &&
+      response.url().includes(`/appointment/my/${appointmentId}/cancel`) &&
       response.request().method() === 'POST',
     { timeout: 30_000 },
   );
