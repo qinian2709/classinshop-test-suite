@@ -1,34 +1,33 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { attachStepScreenshot } from './screenshots.js';
-import {
-  CANCEL_LEAD_HOURS,
-  localSlotUnix,
-  parseChangeSlotParts,
-  parseSelectedSlotParts,
-  type SlotWallClock,
-} from './slot-unix.js';
 
-export { CANCEL_LEAD_HOURS };
+/** 商品 cancelDeadlineValue=24，选开课 25 小时以外的时段才能取消/改约。 */
+export const CANCEL_LEAD_HOURS = 25;
 
 async function waitReady(page: Page): Promise<void> {
   await page.locator('#root').waitFor({ state: 'attached', timeout: 15_000 });
 }
 
 function selectedSlotUnix(summary: string): number | null {
-  const parts = parseSelectedSlotParts(summary);
-  return parts ? localSlotUnix(parts) : null;
+  const match = summary.match(/已选：(\d{2})-(\d{2})\s+周.?\s+(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return wallClockUnix(Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4]));
 }
 
-async function browserSlotUnix(page: Page, parts: SlotWallClock): Promise<number> {
-  return page.evaluate((clock) => {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), clock.month - 1, clock.day, clock.hour, clock.minute, 0);
-    if (start.getTime() < now.getTime() - 2 * 24 * 3600 * 1000) {
-      start.setFullYear(start.getFullYear() + 1);
-    }
-    return Math.floor(start.getTime() / 1000);
-  }, parts);
+function changeSlotUnix(dayHeader: string, slotText: string): number | null {
+  const day = dayHeader.match(/(\d{1,2})月(\d{1,2})日/);
+  const time = slotText.match(/(\d{2}):(\d{2})\s*-/);
+  if (!day || !time) return null;
+  return wallClockUnix(Number(day[1]), Number(day[2]), Number(time[1]), Number(time[2]));
+}
+
+function wallClockUnix(month: number, day: number, hour: number, minute: number, now = new Date()): number {
+  const start = new Date(now.getFullYear(), month - 1, day, hour, minute, 0);
+  if (start.getTime() < now.getTime() - 2 * 24 * 3600 * 1000) {
+    start.setFullYear(start.getFullYear() + 1);
+  }
+  return Math.floor(start.getTime() / 1000);
 }
 
 async function waitChangeWeekSlots(page: Page, weekLabel: '本周' | '下周' | '下下周'): Promise<void> {
@@ -91,7 +90,7 @@ export async function pickFirstAvailableSlot(
   );
 }
 
-/** 改约页：优先下周/下下周，只选开课 25 小时外时段，避免改完再取消被截止拦截。 */
+/** 改约页：优先下周/下下周，只选开课 25 小时外时段。 */
 export async function pickChangeApplySlot(
   page: Page,
   options?: { minHoursAhead?: number },
@@ -118,10 +117,8 @@ export async function pickChangeApplySlot(
       for (let slotIndex = 0; slotIndex < slotCount; slotIndex += 1) {
         const slot = slots.nth(slotIndex);
         if (await slot.isDisabled()) continue;
-        const parts = parseChangeSlotParts(headerText, await slot.innerText());
-        if (!parts) continue;
-        const unix = await browserSlotUnix(page, parts);
-        if (unix < minUnix) continue;
+        const unix = changeSlotUnix(headerText, await slot.innerText());
+        if (!unix || unix < minUnix) continue;
         await slot.click();
         return;
       }
@@ -212,7 +209,7 @@ export async function cancelAppointmentOnDetail(page: Page, appointmentId: numbe
   await expect(page.getByText('确认取消本节预约课时？'), '应弹出取消确认').toBeVisible();
   const cancelResponse = page.waitForResponse(
     (response) =>
-      response.url().includes(`/student/appointment/${appointmentId}/cancel`) &&
+      response.url().includes(`/appointment/my/${appointmentId}/cancel`) &&
       response.request().method() === 'POST',
     { timeout: 30_000 },
   );

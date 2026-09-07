@@ -35,7 +35,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:scripts": "node --import tsx --test scripts/*.test.ts tests/e2e-mobile/helpers/*.test.ts"
+    "test:scripts": "node --import tsx --test scripts/*.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
