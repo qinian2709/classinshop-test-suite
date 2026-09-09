@@ -41,6 +41,7 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 | `REPORT_PUBLISH_BASE_URL` | 推荐 | — | Coolify 报告站点 URL 前缀 |
 | `REPORT_PUBLISH_GIT_REPO` | 推荐 | — | 报告托管 Git 仓库 |
 | `REPORT_PUBLISH_GIT_TOKEN` | 推荐 | — | push 报告仓库的 PAT（Masked） |
+| `REPORT_PUBLISH_SERIES` | 可选 | `classinshop` | 托管目录前缀：`classinshop/{env}/all/latest/`；TI 用 `teacherin` |
 | `WECOM_WEBHOOK_URL` | 可选 | 见 `config/wecom.ts` | 覆盖默认企微 Webhook |
 | `WECOM_MENTION_MOBILES` | 可选 | 见 `config/wecom.ts` | 失败 @ 人的企微绑定手机号，逗号分隔；成功不 @ |
 | `WECOM_PUBLISH_WAIT_SECONDS` | 可选 | `30` | 发企微前等待报告 URL 就绪（秒），`0` 关闭 |
@@ -63,6 +64,10 @@ Schedule 触发（`CI_PIPELINE_SOURCE=schedule`）后：
 | `REPORT_PUBLISH_BASE_URL` | 否 | `https://classinshop-test-reports.coolify.eeo-inc.com` |
 | `REPORT_PUBLISH_GIT_REPO` | 否 | `https://skills.eeo-inc.com/kailiang.qiu/classinshop-test-reports.git` |
 | `REPORT_PUBLISH_GIT_TOKEN` | **是** | GitLab PAT（`write_repository`） |
+
+CI 已设 `REPORT_PUBLISH_SERIES=classinshop`，发布到 `classinshop/{env}/all/latest/`；TI 写 `teacherin/`。旧路径 `{env}/all/latest/` 不自动迁移。
+
+门户首页 `/` 只列 ClassInShop；TeacherIn 在 `/teacherin/`。两边顶栏可切换。
 
 ---
 

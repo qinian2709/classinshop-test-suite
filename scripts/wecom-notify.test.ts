@@ -20,6 +20,13 @@ describe('resolvePortalHomeUrl', () => {
     );
   });
 
+  test('points TeacherIn history at /teacherin/', () => {
+    assert.equal(
+      resolvePortalHomeUrl('https://classinshop-test-reports.coolify.eeo-inc.com', undefined, 'teacherin'),
+      'https://classinshop-test-reports.coolify.eeo-inc.com/teacherin/',
+    );
+  });
+
   test('falls back to the enhanced report origin', () => {
     assert.equal(
       resolvePortalHomeUrl(

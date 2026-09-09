@@ -17,12 +17,55 @@ export interface ReportIndexEntry {
   target: string;
   pipelineId: string;
   publishedAt: string;
+  /** 产品线目录：classinshop | teacherin。旧索引缺省按 classinshop。 */
+  series?: string;
   isLatest?: boolean;
   path?: string;
 }
 
+export const DEFAULT_REPORT_SERIES = 'classinshop';
+export const LEGACY_REPORT_SERIES = 'classinshop';
+export const TEACHERIN_REPORT_SERIES = 'teacherin';
+export const TEACHERIN_PORTAL_PATH = 'teacherin/';
+
 export function sanitizeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._+-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+}
+
+export function resolveReportSeries(raw?: string): string {
+  const value = (raw ?? process.env.REPORT_PUBLISH_SERIES ?? DEFAULT_REPORT_SERIES).trim();
+  return sanitizeSegment(value);
+}
+
+export function normalizeReportSeries(raw?: string): string {
+  return sanitizeSegment(raw?.trim() || LEGACY_REPORT_SERIES);
+}
+
+export function buildReportSlotPrefix(series: string, testEnv: string, target: string): string {
+  return `${sanitizeSegment(series)}/${sanitizeSegment(testEnv)}/${sanitizeSegment(target)}`;
+}
+
+export function buildLatestEnhancedDir(series: string, testEnv: string, target: string): string {
+  return `${buildReportSlotPrefix(series, testEnv, target)}/latest/enhanced`;
+}
+
+export function filterReportsForPortalSeries<T extends { series?: string }>(
+  reports: T[],
+  series: string,
+): T[] {
+  const wanted = normalizeReportSeries(series);
+  return reports.filter((item) => normalizeReportSeries(item.series) === wanted);
+}
+
+/** ClassInShop stays at site root; TeacherIn uses /teacherin/. */
+export function buildSeriesPortalHomeUrl(originHome: string, series?: string): string {
+  const home = originHome.endsWith('/') ? originHome : `${originHome}/`;
+  if (normalizeReportSeries(series) !== TEACHERIN_REPORT_SERIES) return home;
+  try {
+    return `${new URL(home).origin}/${TEACHERIN_PORTAL_PATH}`;
+  } catch {
+    return `${home}${TEACHERIN_PORTAL_PATH}`;
+  }
 }
 
 /** Hosted reports under one env share a single category. */
@@ -49,26 +92,40 @@ export function formatReportScopeLabel(raw?: string): string {
   return labels.join('、');
 }
 
-export function mergeEnvReportTargets<T extends { env: string; target: string }>(
+export function mergeEnvReportTargets<T extends { env: string; target: string; series?: string }>(
   reports: T[],
   env: string,
   target: string,
+  series?: string,
 ): T[] {
-  return reports.map((item) => (item.env === env ? { ...item, target } : item));
+  const wanted = normalizeReportSeries(series);
+  return reports.map((item) => {
+    if (item.env !== env) return item;
+    if (normalizeReportSeries(item.series) !== wanted) return item;
+    return { ...item, target };
+  });
 }
 
-/** Drop leftover {env}/{oldTarget}/ trees after merging to one slot. */
-export function pruneSiblingTargetDirs(repoRoot: string, testEnv: string, keepTarget: string): string[] {
+/** Drop leftover {series}/{env}/{oldTarget}/ trees after merging to one slot. */
+export function pruneSiblingTargetDirs(
+  repoRoot: string,
+  testEnv: string,
+  keepTarget: string,
+  series?: string,
+): string[] {
   const envSegment = sanitizeSegment(testEnv);
   const keepSegment = sanitizeSegment(keepTarget);
-  const envDir = path.join(repoRoot, envSegment);
+  const seriesSegment = series ? sanitizeSegment(series) : '';
+  const envDir = seriesSegment ? path.join(repoRoot, seriesSegment, envSegment) : path.join(repoRoot, envSegment);
   if (!fs.existsSync(envDir)) return [];
 
   const removed: string[] = [];
   for (const entry of fs.readdirSync(envDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name === keepSegment) continue;
     fs.rmSync(path.join(envDir, entry.name), { recursive: true, force: true });
-    removed.push(`${envSegment}/${entry.name}`);
+    removed.push(
+      seriesSegment ? `${seriesSegment}/${envSegment}/${entry.name}` : `${envSegment}/${entry.name}`,
+    );
   }
   return removed;
 }

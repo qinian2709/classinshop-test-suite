@@ -12,6 +12,10 @@ import {
   pruneSiblingTargetDirs,
   ensurePortalTargetLabels,
   ensurePortalHtml,
+  buildLatestEnhancedDir,
+  normalizeReportSeries,
+  filterReportsForPortalSeries,
+  buildSeriesPortalHomeUrl,
   type ReportIndexEntry,
 } from './report-slot.ts';
 
@@ -45,7 +49,68 @@ describe('formatReportScopeLabel', () => {
   });
 });
 
+describe('buildLatestEnhancedDir', () => {
+  test('prefixes series so TI and classinshop do not share a slot', () => {
+    assert.equal(
+      buildLatestEnhancedDir('classinshop', '14', 'all'),
+      'classinshop/14/all/latest/enhanced',
+    );
+    assert.equal(
+      buildLatestEnhancedDir('teacherin', '14', 'all'),
+      'teacherin/14/all/latest/enhanced',
+    );
+  });
+});
+
+describe('normalizeReportSeries', () => {
+  test('treats missing series as classinshop legacy', () => {
+    assert.equal(normalizeReportSeries(undefined), 'classinshop');
+    assert.equal(normalizeReportSeries('teacherin'), 'teacherin');
+  });
+});
+
+describe('filterReportsForPortalSeries', () => {
+  test('keeps classinshop plus legacy rows off the shop page', () => {
+    const reports: ReportIndexEntry[] = [
+      { env: '14', target: 'all', pipelineId: '1', publishedAt: '2026-08-01T00:00:00.000Z' },
+      { env: '14', target: 'all', pipelineId: '2', publishedAt: '2026-08-02T00:00:00.000Z', series: 'classinshop' },
+      { env: '14', target: 'all', pipelineId: '3', publishedAt: '2026-08-03T00:00:00.000Z', series: 'teacherin' },
+    ];
+    assert.deepEqual(
+      filterReportsForPortalSeries(reports, 'classinshop').map((item) => item.pipelineId),
+      ['1', '2'],
+    );
+    assert.deepEqual(
+      filterReportsForPortalSeries(reports, 'teacherin').map((item) => item.pipelineId),
+      ['3'],
+    );
+  });
+});
+
+describe('buildSeriesPortalHomeUrl', () => {
+  test('keeps classinshop at site root and TI under /teacherin/', () => {
+    assert.equal(
+      buildSeriesPortalHomeUrl('https://classinshop-test-reports.coolify.eeo-inc.com/', 'classinshop'),
+      'https://classinshop-test-reports.coolify.eeo-inc.com/',
+    );
+    assert.equal(
+      buildSeriesPortalHomeUrl('https://classinshop-test-reports.coolify.eeo-inc.com/', 'teacherin'),
+      'https://classinshop-test-reports.coolify.eeo-inc.com/teacherin/',
+    );
+  });
+});
+
 describe('mergeEnvReportTargets', () => {
+  test('does not rewrite the other product series on the same env', () => {
+    const reports: ReportIndexEntry[] = [
+      { env: '14', target: 'api', pipelineId: '1', publishedAt: '2026-08-01T00:00:00.000Z', series: 'classinshop' },
+      { env: '14', target: 'api', pipelineId: '2', publishedAt: '2026-08-02T00:00:00.000Z', series: 'teacherin' },
+    ];
+    const merged = mergeEnvReportTargets(reports, '14', 'all', 'teacherin');
+    assert.equal(merged[0]?.target, 'api');
+    assert.equal(merged[1]?.target, 'all');
+  });
+
   test('rewrites every row of that env onto the canonical target', () => {
     const reports: ReportIndexEntry[] = [
       { env: '14', target: 'api', pipelineId: '1', publishedAt: '2026-08-01T00:00:00.000Z' },
@@ -147,5 +212,18 @@ describe('pruneSiblingTargetDirs', () => {
     assert.deepEqual(removed.sort(), ['14/api', '14/e2e-web+e2e-mobile']);
     assert.equal(fs.existsSync(path.join(repo, '14', 'all')), true);
     assert.equal(fs.existsSync(path.join(repo, '13', 'api')), true);
+  });
+
+  test('prunes only inside the given series', () => {
+    fs.mkdirSync(TEMP_ROOT, { recursive: true });
+    const repo = fs.mkdtempSync(path.join(TEMP_ROOT, 'repo-series-'));
+    fs.mkdirSync(path.join(repo, 'classinshop', '14', 'api', 'latest'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'classinshop', '14', 'all', 'latest'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'teacherin', '14', 'api', 'latest'), { recursive: true });
+
+    const removed = pruneSiblingTargetDirs(repo, '14', 'all', 'classinshop');
+    assert.deepEqual(removed, ['classinshop/14/api']);
+    assert.equal(fs.existsSync(path.join(repo, 'classinshop', '14', 'all')), true);
+    assert.equal(fs.existsSync(path.join(repo, 'teacherin', '14', 'api')), true);
   });
 });

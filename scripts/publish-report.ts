@@ -8,9 +8,13 @@ import {
   mergeEnvReportTargets,
   pruneSiblingTargetDirs,
   sanitizeSegment,
-  ensurePortalHtml,
+  resolveReportSeries,
+  normalizeReportSeries,
+  buildReportSlotPrefix,
+  buildLatestEnhancedDir,
 } from './report-slot.js';
 import { buildGitLabArtifactsBrowseUrl, buildGitLabJobUrl, buildGitLabPipelineUrl, resolvePortalHomeUrl } from './wecom-notify.js';
+import { writeReportPortals } from './portal.js';
 import { formatBytes, slimReportHtmlForPublish } from './slim-report-html.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -19,6 +23,7 @@ const LATEST_SEGMENT = 'latest';
 interface PublishOptions {
   testEnv: string;
   target: string;
+  series: string;
   sourceDir: string;
   pipelineId: string;
   ref: string;
@@ -28,7 +33,7 @@ function usage(): never {
   console.error(`
 Usage:
   pnpm exec tsx scripts/publish-report.ts \\
-    --env 14 --target all --source reports/latest/enhanced \\
+    --env 14 --target all --series classinshop --source reports/latest/enhanced \\
     --pipeline-id 12345 --ref 14
 
 Environment (CI/CD Variables):
@@ -37,6 +42,7 @@ Environment (CI/CD Variables):
   REPORT_PUBLISH_GIT_REPO          Coolify 报告仓库 HTTPS URL（不含 token）
   REPORT_PUBLISH_GIT_TOKEN         GitLab Token（write_repository），CI 中 Masked
   REPORT_PUBLISH_GIT_BRANCH        默认 main
+  REPORT_PUBLISH_SERIES            产品线目录，默认 classinshop；TI 用 teacherin
   REPORT_PUBLISH_RSYNC_TARGET      rsync 目标目录
   REPORT_PUBLISH_SSH_PRIVATE_KEY   （可选）rsync SSH 私钥
   REPORT_PUBLISH_LOCAL_DIR         （可选）本机目录拷贝
@@ -44,8 +50,9 @@ Environment (CI/CD Variables):
   REPORT_INDEX_HISTORY_LIMIT       每个 env 索引保留最近 N 次（默认 30，仅元数据+外链）
 
 发布策略:
-  每个环境只保留一个分类 all（全量）：覆盖 {env}/all/latest/enhanced/；
-  删除同环境下 api / e2e-web 等旧分类目录。
+  每个产品线+环境只保留一个分类 all（全量）：覆盖 {series}/{env}/all/latest/enhanced/；
+  series 由 REPORT_PUBLISH_SERIES / --series 决定（本仓默认 classinshop）。
+  删除同 series+环境下 api / e2e-web 等旧分类目录，不影响其他产品线。
   历史完整报告见 GitLab Job Artifacts（索引记录 jobId / artifactUrl）。
 
 Outputs:
@@ -75,20 +82,16 @@ function resolveSourceDir(source: string): string {
   return absolute;
 }
 
-function buildLatestRelativePath(testEnv: string, target: string): string {
-  const env = sanitizeSegment(testEnv);
-  const targetSegment = sanitizeSegment(target);
-  return `${env}/${targetSegment}/${LATEST_SEGMENT}/enhanced`;
+function buildLatestRelativePath(options: Pick<PublishOptions, 'series' | 'testEnv' | 'target'>): string {
+  return buildLatestEnhancedDir(options.series, options.testEnv, options.target);
 }
 
-function buildLatestReportHtmlPath(testEnv: string, target: string): string {
-  return `${buildLatestRelativePath(testEnv, target)}/enhanced-report.html`;
+function buildLatestReportHtmlPath(options: Pick<PublishOptions, 'series' | 'testEnv' | 'target'>): string {
+  return `${buildLatestRelativePath(options)}/enhanced-report.html`;
 }
 
-function buildSlotPrefix(testEnv: string, target: string): string {
-  const env = sanitizeSegment(testEnv);
-  const targetSegment = sanitizeSegment(target);
-  return `${env}/${targetSegment}`;
+function buildSlotPrefix(options: Pick<PublishOptions, 'series' | 'testEnv' | 'target'>): string {
+  return buildReportSlotPrefix(options.series, options.testEnv, options.target);
 }
 
 const REPORTS_INDEX_FILE = 'reports-index.json';
@@ -103,6 +106,7 @@ interface ReportSummary {
 }
 
 interface ReportIndexEntry {
+  series?: string;
   env: string;
   target: string;
   pipelineId: string;
@@ -137,16 +141,18 @@ function resolveJobId(): string | undefined {
 }
 
 function readReportIndexEntry(sourceDir: string, options: PublishOptions): ReportIndexEntry {
+  const series = sanitizeSegment(options.series);
   const env = sanitizeSegment(options.testEnv);
   const target = sanitizeSegment(options.target);
   const pipelineId = sanitizeSegment(options.pipelineId);
 
   const entry: ReportIndexEntry = {
+    series,
     env,
     target,
     pipelineId,
     jobId: resolveJobId(),
-    path: buildLatestReportHtmlPath(env, target),
+    path: buildLatestReportHtmlPath(options),
     publishedAt: new Date().toISOString(),
     ref: options.ref || undefined,
     isLatest: true,
@@ -217,7 +223,7 @@ function capHistoryPerSlot(reports: ReportIndexEntry[], limit: number): ReportIn
   const groups = new Map<string, ReportIndexEntry[]>();
 
   for (const report of reports) {
-    const key = `${report.env}/${report.target}`;
+    const key = `${normalizeReportSeries(report.series)}/${report.env}/${report.target}`;
     const bucket = groups.get(key) ?? [];
     bucket.push(report);
     groups.set(key, bucket);
@@ -250,21 +256,32 @@ function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
     }
   }
 
-  index.reports = mergeEnvReportTargets(index.reports, entry.env, entry.target)
+  const series = normalizeReportSeries(entry.series);
+  index.reports = mergeEnvReportTargets(index.reports, entry.env, entry.target, series)
     .filter(
       (item) =>
         !(
+          normalizeReportSeries(item.series) === series &&
           item.env === entry.env &&
           item.target === entry.target &&
           item.pipelineId === entry.pipelineId
         ),
     )
-    .map((item) => (item.env === entry.env ? stripHostedPath(item) : item));
+    .map((item) =>
+      item.env === entry.env && normalizeReportSeries(item.series) === series
+        ? stripHostedPath(item)
+        : item,
+    );
 
   index.reports.push({
     ...entry,
+    series,
     isLatest: true,
-    path: buildLatestReportHtmlPath(entry.env, entry.target),
+    path: buildLatestReportHtmlPath({
+      series,
+      testEnv: entry.env,
+      target: entry.target,
+    }),
   });
   index.reports = capHistoryPerSlot(index.reports, readHistoryLimit());
   index.updatedAt = new Date().toISOString();
@@ -272,9 +289,15 @@ function updateReportsIndex(repoDir: string, entry: ReportIndexEntry): void {
   fs.writeFileSync(indexPath, `${JSON.stringify(index, null, 2)}\n`, 'utf8');
 }
 
-/** Remove per-pipeline report trees; only {env}/{target}/latest/ remains. */
-export function pruneLegacyPipelineDirs(repoRoot: string, testEnv: string, target: string): string[] {
-  const slotDir = path.join(repoRoot, buildSlotPrefix(testEnv, target));
+/** Remove per-pipeline report trees; only {series}/{env}/{target}/latest/ remains. */
+export function pruneLegacyPipelineDirs(
+  repoRoot: string,
+  testEnv: string,
+  target: string,
+  series: string,
+): string[] {
+  const slotPrefix = buildSlotPrefix({ series, testEnv, target });
+  const slotDir = path.join(repoRoot, slotPrefix);
   if (!fs.existsSync(slotDir)) {
     return [];
   }
@@ -284,7 +307,7 @@ export function pruneLegacyPipelineDirs(repoRoot: string, testEnv: string, targe
     if (!entry.isDirectory() || entry.name === LATEST_SEGMENT) continue;
     const fullPath = path.join(slotDir, entry.name);
     fs.rmSync(fullPath, { recursive: true, force: true });
-    removed.push(`${buildSlotPrefix(testEnv, target)}/${entry.name}`);
+    removed.push(`${slotPrefix}/${entry.name}`);
   }
 
   return removed;
@@ -292,7 +315,7 @@ export function pruneLegacyPipelineDirs(repoRoot: string, testEnv: string, targe
 
 export const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 
-function writePublishEnv(publicUrl: string): void {
+function writePublishEnv(publicUrl: string, series: string): void {
   const dir = path.dirname(PUBLISH_ENV_FILE);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -308,7 +331,7 @@ function writePublishEnv(publicUrl: string): void {
   append('CI_JOB_ID', process.env.CI_JOB_ID);
   append('CI_JOB_URL', process.env.CI_JOB_URL || buildGitLabJobUrl());
   append('ARTIFACT_BROWSE_URL', buildGitLabArtifactsBrowseUrl());
-  append('PORTAL_HOME_URL', resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, publicUrl));
+  append('PORTAL_HOME_URL', resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, publicUrl, series));
 
   fs.writeFileSync(PUBLISH_ENV_FILE, `${lines.join('\n')}\n`, 'utf8');
 }
@@ -430,15 +453,17 @@ function logLegacyRemoval(removed: string[], slotPrefix: string): void {
 }
 
 function finalizePublishedSlot(repoRoot: string, options: PublishOptions, sourceDir: string): void {
-  const slotPrefix = buildSlotPrefix(options.testEnv, options.target);
-  logLegacyRemoval(pruneLegacyPipelineDirs(repoRoot, options.testEnv, options.target), slotPrefix);
-  logLegacyRemoval(pruneSiblingTargetDirs(repoRoot, options.testEnv, options.target), sanitizeSegment(options.testEnv));
+  const slotPrefix = buildSlotPrefix(options);
+  logLegacyRemoval(
+    pruneLegacyPipelineDirs(repoRoot, options.testEnv, options.target, options.series),
+    slotPrefix,
+  );
+  logLegacyRemoval(
+    pruneSiblingTargetDirs(repoRoot, options.testEnv, options.target, options.series),
+    `${options.series}/${sanitizeSegment(options.testEnv)}`,
+  );
   updateReportsIndex(repoRoot, readReportIndexEntry(sourceDir, options));
-
-  const portalIndex = path.join(repoRoot, 'index.html');
-  if (fs.existsSync(portalIndex)) {
-    fs.writeFileSync(portalIndex, ensurePortalHtml(fs.readFileSync(portalIndex, 'utf8')), 'utf8');
-  }
+  writeReportPortals(repoRoot);
 }
 
 function publishViaGit(options: PublishOptions, baseUrl: string): string {
@@ -454,7 +479,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const relativePath = buildLatestRelativePath(options.testEnv, options.target);
+  const relativePath = buildLatestRelativePath(options);
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'classinshop-report-publish-'));
   const authUrl = buildAuthenticatedGitUrl(gitRepo, gitToken);
@@ -472,7 +497,12 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
       GIT_COMMITTER_EMAIL: process.env.REPORT_PUBLISH_GIT_AUTHOR_EMAIL || 'ci@classinshop.local',
     };
 
-    runCommand('git', ['add', '-A', sanitizeSegment(options.testEnv), REPORTS_INDEX_FILE, 'index.html'], workDir, gitEnv);
+    runCommand(
+      'git',
+      ['add', '-A', sanitizeSegment(options.series), REPORTS_INDEX_FILE, 'index.html', 'teacherin/index.html'],
+      workDir,
+      gitEnv,
+    );
     runCommand(
       'git',
       [
@@ -482,7 +512,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
         `user.email=${gitEnv.GIT_AUTHOR_EMAIL}`,
         'commit',
         '-m',
-        `report ${options.testEnv}/${options.target} latest (pipeline ${options.pipelineId})`,
+        `report ${options.series}/${options.testEnv}/${options.target} latest (pipeline ${options.pipelineId})`,
       ],
       workDir,
       gitEnv,
@@ -494,7 +524,7 @@ function publishViaGit(options: PublishOptions, baseUrl: string): string {
 
   console.error(`[publish-report] Report URL: ${publicUrl}`);
   console.error('[publish-report] Coolify redeploy will start automatically after git push (~1-2 min).');
-  writePublishEnv(publicUrl);
+  writePublishEnv(publicUrl, options.series);
   return publicUrl;
 }
 
@@ -538,7 +568,7 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
   }
 
   const sourceDir = resolveSourceDir(options.sourceDir);
-  const relativePath = buildLatestRelativePath(options.testEnv, options.target);
+  const relativePath = buildLatestRelativePath(options);
   const sshKey = process.env.REPORT_PUBLISH_SSH_PRIVATE_KEY?.trim();
   const publicUrl = buildPublicUrl(baseUrl, relativePath);
 
@@ -553,7 +583,7 @@ function publishViaRsyncOrLocal(options: PublishOptions, baseUrl: string): strin
   }
 
   console.error(`[publish-report] Report URL: ${publicUrl}`);
-  writePublishEnv(publicUrl);
+  writePublishEnv(publicUrl, options.series);
   return publicUrl;
 }
 
@@ -573,6 +603,7 @@ function publish(options: PublishOptions): string {
 function parseOptions(argv: string[]): PublishOptions {
   const testEnv = readArg(argv, '--env') ?? process.env.TEST_ENV ?? '';
   const target = canonicalizeReportTarget(readArg(argv, '--target'));
+  const series = resolveReportSeries(readArg(argv, '--series'));
   const sourceDir = readArg(argv, '--source') ?? 'reports/latest/enhanced';
   const pipelineId = readArg(argv, '--pipeline-id') ?? process.env.CI_PIPELINE_ID ?? '';
   const ref = readArg(argv, '--ref') ?? process.env.CI_COMMIT_REF_NAME ?? '';
@@ -580,7 +611,7 @@ function parseOptions(argv: string[]): PublishOptions {
   if (!testEnv) usage();
   if (!pipelineId) usage();
 
-  return { testEnv, target, sourceDir, pipelineId, ref };
+  return { testEnv, target, series, sourceDir, pipelineId, ref };
 }
 
 function main(): number {
