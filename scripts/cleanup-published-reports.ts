@@ -1,6 +1,6 @@
 /**
  * Clone classinshop-test-reports and prune expired rows in reports-index.json.
- * Hosted HTML lives under {env}/{target}/latest/ and is overwritten on each publish;
+ * Hosted HTML lives under {series}/{env}/{target}/latest/ and is overwritten on each publish;
  * retention only drops historical index metadata (Pipeline / Artifacts links).
  *
  * Then squash Git history to a single orphan commit and force-with-lease push,

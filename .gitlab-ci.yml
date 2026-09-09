@@ -23,7 +23,7 @@
 #   REPORT_PUBLISH_GIT_TOKEN=<GitLab PAT，write_repository，Masked>
 # 或 rsync/local 备选：
 #   REPORT_PUBLISH_RSYNC_TARGET / REPORT_PUBLISH_LOCAL_DIR
-# 发布路径：{env}/{target}/{pipelineId}/enhanced/（HTML + attachments；detailed-report.json 仅 CI 内用于发布/索引，不入 GitLab Artifacts）
+# 发布路径：classinshop/{env}/all/latest/enhanced/（每环境只留最新；与 teacherin/ 并列，互不影响）
 #
 # 报告清理（classinshop-test-reports 无 Runner）：在 test-suite 建独立 Schedule
 #   SCHEDULE_TASK=cleanup-reports
@@ -37,6 +37,8 @@ variables:
   # 官方 Playwright 镜像（自带浏览器）。若内网无法拉取，请改为内部镜像仓库地址。
   PLAYWRIGHT_IMAGE: 'mcr.microsoft.com/playwright:v1.61.0-jammy'
   PNPM_VERSION: '10'
+  # 托管仓目录：classinshop/{env}/all/latest/；TI 用 teacherin/
+  REPORT_PUBLISH_SERIES: classinshop
 
 workflow:
   rules:

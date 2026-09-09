@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
-import { formatReportScopeLabel, formatReportTargetLabel } from './report-slot.js';
+import { buildSeriesPortalHomeUrl, formatReportScopeLabel, formatReportTargetLabel } from './report-slot.js';
 import { resolveWeComMentionMobiles, resolveWeComWebhookUrl } from '../config/wecom.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -103,10 +103,11 @@ const PUBLISH_ENV_FILE = path.join(ROOT, 'reports/latest/publish.env');
 export function resolvePortalHomeUrl(
   baseUrl = process.env.REPORT_PUBLISH_BASE_URL,
   enhancedUrl?: string,
+  series?: string,
 ): string | undefined {
-  const fromBase = originHome(baseUrl);
-  if (fromBase) return fromBase;
-  return originHome(enhancedUrl);
+  const home = originHome(baseUrl) ?? originHome(enhancedUrl);
+  if (!home) return undefined;
+  return buildSeriesPortalHomeUrl(home, series);
 }
 
 function originHome(value?: string): string | undefined {
@@ -212,7 +213,9 @@ export function resolveReportLinks(input: WeComNotifyInput): ReportLinks {
 
   return {
     enhanced,
-    portalHome: publishEnv.portalHomeUrl || resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, enhanced),
+    portalHome:
+      publishEnv.portalHomeUrl ||
+      resolvePortalHomeUrl(process.env.REPORT_PUBLISH_BASE_URL, enhanced, process.env.REPORT_PUBLISH_SERIES),
     artifactsBrowse,
     job,
     localPath,
