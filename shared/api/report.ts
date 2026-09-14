@@ -18,7 +18,7 @@ export interface ApiCallLogOptions {
   /** 端到端耗时（ms），从发请求到拿到响应体 */
   durationMs?: number;
   assertions?: string[];
-  /** 本条请求相关断言是否失败（如耗时超限）；供报告在 API Requests 上行内标红 */
+  /** 本条请求相关断言是否失败（耗时超限或后续业务 expect 失败）；报告据此移出「通过的请求」 */
   assertionFailed?: boolean;
   name?: string;
 }

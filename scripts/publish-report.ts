@@ -418,7 +418,16 @@ function copyDirectory(sourceDir: string, destDir: string): void {
 }
 
 function runCommand(command: string, args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): void {
-  const result = spawnSync(command, args, { cwd, stdio: 'inherit', env });
+  // stdout 只留给 `export ENHANCED_REPORT_URL=...` 给 CI eval；git commit 日志进 stderr，
+  // 否则 `eval "$(publish-report.ts)"` 会把 `(pipeline 123)` 当 bash 语法炸。
+  const result = spawnSync(command, args, {
+    cwd,
+    env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  if (result.stdout) process.stderr.write(result.stdout.endsWith('\n') ? result.stdout : `${result.stdout}\n`);
+  if (result.stderr) process.stderr.write(result.stderr.endsWith('\n') ? result.stderr : `${result.stderr}\n`);
   if (result.error) {
     throw new Error(`${command} failed: ${result.error.message}`);
   }
