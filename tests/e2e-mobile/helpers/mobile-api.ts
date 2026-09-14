@@ -11,6 +11,7 @@ import {
   futureLocalDate,
   pickNumber,
   cleanupRefundMerchantOrder,
+  provisionPublishedFixedGoods,
   provisionPublishedRecordedGoods,
   provisionStudentAppointmentOrderItem,
   provisionTeacherAvailableSlots,
@@ -39,13 +40,6 @@ interface MerchantShop {
 
 interface OrgDetail {
   shopDomain: string;
-}
-
-interface MobileGoodsItem {
-  id?: number;
-  name?: string;
-  title?: string;
-  status?: number;
 }
 
 interface CouponIdResult {
@@ -181,37 +175,6 @@ export async function resolveMobileShopContext(testInfo: TestInfo): Promise<Mobi
     shopId: configEnv.shopId ? Number(configEnv.shopId) : undefined,
     shopDomain: fallbackDomain,
   };
-}
-
-export async function findPublishedMobileGoods(
-  testInfo: TestInfo,
-  shop: Pick<MobileShopContext, 'shopDomain'>,
-): Promise<MobileGoodsSummary> {
-  const headers = { 'X-Shop-Domain': shop.shopDomain };
-  const list = await requestMobileJson<ListData<MobileGoodsItem>>(testInfo, 'GET', Endpoints.shop.goodsList, {
-    headers,
-    query: { page: 1, limit: 20 },
-    logName: '请求日志-H5-商品列表.json',
-    assertions: ['H5 商品列表应返回可访问商品'],
-  });
-  if (list.body.code !== SUCCESS_CODE || !Array.isArray(list.body.data?.list)) {
-    throw new Error(`H5 商品列表接口未成功：code=${list.body.code}, msg=${list.body.msg}`);
-  }
-
-  for (const item of list.body.data.list) {
-    if (!item.id) continue;
-    const detail = await requestMobileJson<MobileGoodsItem>(testInfo, 'GET', Endpoints.shop.goodsDetail(item.id), {
-      headers,
-      logName: `请求日志-H5-商品详情-${item.id}.json`,
-      assertions: ['候选商品详情应可访问，避免并发删除导致误报'],
-    });
-    if (detail.body.code === SUCCESS_CODE && detail.body.data?.id) {
-      const name = detail.body.data.name || detail.body.data.title || item.name || item.title;
-      if (name) return { id: detail.body.data.id, name };
-    }
-  }
-
-  throw new Error('当前 H5 店铺未找到可访问的上架商品，无法执行商品 UI 用例');
 }
 
 function formatTime(date = new Date()): string {
@@ -510,6 +473,39 @@ export async function prepareBookableAppointment(): Promise<BookableAppointmentO
   return {
     orderItemId: item.orderItemId,
     goodsName: item.title || `预约课订单 ${item.orderItemId}`,
+    cleanup: () => data.runAll(),
+  };
+}
+
+export interface CatalogSearchGoods {
+  goodsId: number;
+  goodsName: string;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * 上架一门零元固定课，给商品搜索/详情/购买弹层共用。
+ * 调用方负责 afterAll 统一 cleanup，避免并行用例先删后搜。
+ */
+export async function prepareCatalogSearchGoods(): Promise<CatalogSearchGoods | null> {
+  if (!configEnv.shopId || !accounts.token) return null;
+
+  const data = new DataRegistry();
+  const { merchant } = createShopApis();
+  const goods = await provisionPublishedFixedGoods(merchant, {
+    shopId: configEnv.shopId,
+    data,
+    price: 0,
+    namePrefix: 'UI商品搜索',
+  });
+  if (!goods) {
+    await data.runAll();
+    return null;
+  }
+
+  return {
+    goodsId: goods.goodsId,
+    goodsName: goods.title || `UI商品搜索 ${goods.goodsId}`,
     cleanup: () => data.runAll(),
   };
 }

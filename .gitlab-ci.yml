@@ -154,11 +154,15 @@ test-suite:
   artifacts:
     when: always
     expose_as: 'Enhanced Report'
-    # 仅保留 GitLab 测结果与报告回退链接所需文件；完整报告（含 attachments）走 Coolify 托管，避免整棵 reports/ 撑大项目存储。
+    # HTML 用相对路径 attachments/*.png；不打包该目录则下载产物后截图空白。
+    # JSON 请求日志仍排除，避免撑大 GitLab 存储。完整托管报告继续走 Coolify。
     paths:
       - reports/latest/junit.xml
       - reports/latest/publish.env
       - reports/latest/enhanced/enhanced-report.html
+      - reports/latest/enhanced/attachments/
+    exclude:
+      - reports/latest/enhanced/attachments/*.json
     reports:
       junit: reports/latest/junit.xml
     expire_in: 3 days

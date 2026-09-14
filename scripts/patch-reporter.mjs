@@ -1507,6 +1507,153 @@ function main() {
       }
     }
 
+    // 18. 业务 expect 失败后，对应 API 请求移出「通过的请求」
+    if (!indexContent.includes('patched: mark api assertion failures from steps')) {
+      const attachNameNeedle =
+        '                                        assertionFailed: !!parsed.assertionFailed,\n' +
+        '                                        timestamp: parsed.timestamp ? new Date(parsed.timestamp) : undefined';
+      const attachNameReplacement =
+        '                                        assertionFailed: !!parsed.assertionFailed,\n' +
+        '                                        attachmentName: attachment.name,\n' +
+        '                                        timestamp: parsed.timestamp ? new Date(parsed.timestamp) : undefined';
+      if (!indexContent.includes(attachNameNeedle)) {
+        console.warn('⚠️  patch #18 attachmentName needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(attachNameNeedle, attachNameReplacement);
+        indexPatched = true;
+      }
+
+      const callNeedle =
+        '        const apiRequests = this.extractApiRequests(result);\n' +
+        '        const tags = this.extractTags(test);';
+      const callReplacement =
+        '        const apiRequests = this.extractApiRequests(result);\n' +
+        '        // patched: mark api assertion failures from steps\n' +
+        '        this.markApiRequestsFailedBySteps(apiRequests, steps, result.error && result.error.message);\n' +
+        '        const tags = this.extractTags(test);';
+      if (!indexContent.includes(callNeedle)) {
+        console.warn('⚠️  patch #18 mark-call needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(callNeedle, callReplacement);
+        indexPatched = true;
+      }
+
+      const methodNeedle = '        return apiRequests;\n    }\n    async onEnd(result) {';
+      const methodReplacement =
+        '        return apiRequests;\n' +
+        '    }\n' +
+        '    markApiRequestsFailedBySteps(apiRequests, steps, testError) {\n' +
+        '        if (!apiRequests || !apiRequests.length) return apiRequests;\n' +
+        '        const attachTitle = /^Attach ["“](.+?)["”]$/;\n' +
+        '        const isFailed = (step) => step && (step.status === \'failed\' || !!step.error);\n' +
+        '        const isFailedLeaf = (step) => {\n' +
+        '            if (!isFailed(step)) return false;\n' +
+        '            const kids = step.steps || [];\n' +
+        '            return !kids.some(isFailed);\n' +
+        '        };\n' +
+        '        const assertionMatches = (assertion, failedTexts) => {\n' +
+        '            const needle = String(assertion || \'\').trim();\n' +
+        '            if (!needle) return false;\n' +
+        '            if (/[✓✔]/.test(needle) && !/[✗✘×]/.test(needle)) return false;\n' +
+        '            return failedTexts.some((text) => {\n' +
+        '                const hay = String(text || \'\').trim();\n' +
+        '                return !!hay && (hay.indexOf(needle) !== -1 || needle.indexOf(hay) !== -1);\n' +
+        '            });\n' +
+        '        };\n' +
+        '        const markByAssertionText = (failedTexts) => {\n' +
+        '            let lastMatch;\n' +
+        '            for (const req of apiRequests) {\n' +
+        '                const assertions = req.assertions || [];\n' +
+        '                if (assertions.some((a) => assertionMatches(a, failedTexts))) lastMatch = req;\n' +
+        '            }\n' +
+        '            if (lastMatch) lastMatch.assertionFailed = true;\n' +
+        '        };\n' +
+        '        const markFailedLeaf = (lastAttachName, failedTexts) => {\n' +
+        '            // patched: attach name requires assertion match\n' +
+        '            if (lastAttachName) {\n' +
+        '                for (let i = apiRequests.length - 1; i >= 0; i--) {\n' +
+        '                    if (apiRequests[i].attachmentName === lastAttachName) {\n' +
+        '                        const assertions = apiRequests[i].assertions || [];\n' +
+        '                        if (!assertions.length || assertions.some((a) => assertionMatches(a, failedTexts))) {\n' +
+        '                            apiRequests[i].assertionFailed = true;\n' +
+        '                            return;\n' +
+        '                        }\n' +
+        '                        break;\n' +
+        '                    }\n' +
+        '                }\n' +
+        '            }\n' +
+        '            markByAssertionText(failedTexts);\n' +
+        '        };\n' +
+        '        let lastAttachName;\n' +
+        '        let markedFromLeaf = false;\n' +
+        '        const visit = (list) => {\n' +
+        '            if (!list) return;\n' +
+        '            for (const step of list) {\n' +
+        '                const attachMatch = step && step.title ? String(step.title).match(attachTitle) : null;\n' +
+        '                if (attachMatch) lastAttachName = attachMatch[1];\n' +
+        '                if (isFailedLeaf(step)) {\n' +
+        '                    const failedTexts = [step.title, step.error].filter(Boolean);\n' +
+        '                    markFailedLeaf(lastAttachName, failedTexts);\n' +
+        '                    markedFromLeaf = true;\n' +
+        '                }\n' +
+        '                visit(step.steps);\n' +
+        '            }\n' +
+        '        };\n' +
+        '        visit(steps);\n' +
+        '        if (!markedFromLeaf && testError) markByAssertionText([testError]);\n' +
+        '        return apiRequests;\n' +
+        '    }\n' +
+        '    async onEnd(result) {';
+      if (!indexContent.includes(methodNeedle)) {
+        console.warn('⚠️  patch #18 mark-method needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(methodNeedle, methodReplacement);
+        indexPatched = true;
+      }
+    }
+
+    // 18b. 已打过 #18 的 index：Attach 名命中时也要对上 assertions，避免误伤无关 expect
+    if (
+      indexContent.includes('markApiRequestsFailedBySteps') &&
+      !indexContent.includes('patched: attach name requires assertion match')
+    ) {
+      const oldMarkFailedLeaf =
+        '        const markFailedLeaf = (lastAttachName, failedTexts) => {\n' +
+        '            if (lastAttachName) {\n' +
+        '                for (let i = apiRequests.length - 1; i >= 0; i--) {\n' +
+        '                    if (apiRequests[i].attachmentName === lastAttachName) {\n' +
+        '                        apiRequests[i].assertionFailed = true;\n' +
+        '                        return;\n' +
+        '                    }\n' +
+        '                }\n' +
+        '            }\n' +
+        '            markByAssertionText(failedTexts);\n' +
+        '        };';
+      const newMarkFailedLeaf =
+        '        const markFailedLeaf = (lastAttachName, failedTexts) => {\n' +
+        '            // patched: attach name requires assertion match\n' +
+        '            if (lastAttachName) {\n' +
+        '                for (let i = apiRequests.length - 1; i >= 0; i--) {\n' +
+        '                    if (apiRequests[i].attachmentName === lastAttachName) {\n' +
+        '                        const assertions = apiRequests[i].assertions || [];\n' +
+        '                        if (!assertions.length || assertions.some((a) => assertionMatches(a, failedTexts))) {\n' +
+        '                            apiRequests[i].assertionFailed = true;\n' +
+        '                            return;\n' +
+        '                        }\n' +
+        '                        break;\n' +
+        '                    }\n' +
+        '                }\n' +
+        '            }\n' +
+        '            markByAssertionText(failedTexts);\n' +
+        '        };';
+      if (!indexContent.includes(oldMarkFailedLeaf)) {
+        console.warn('⚠️  patch #18b markFailedLeaf needle not found, skipping');
+      } else {
+        indexContent = indexContent.replace(oldMarkFailedLeaf, newMarkFailedLeaf);
+        indexPatched = true;
+      }
+    }
+
     if (indexPatched) {
       writeFileSync(indexPath, indexContent, 'utf-8');
       console.log('✅ playwright-enhanced-reporter index patched');
