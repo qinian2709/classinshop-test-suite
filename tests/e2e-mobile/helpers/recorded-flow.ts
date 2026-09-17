@@ -1,4 +1,4 @@
-import type { Page, TestInfo } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
 import { expect } from '@playwright/test';
 import {
   RECORDED_DOC_ACTIVITY_TITLE,
@@ -8,6 +8,13 @@ import { attachStepScreenshot } from './screenshots.js';
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function scrollSectionIntoView(locator: Locator): Promise<void> {
+  await expect(locator).toBeAttached({ timeout: 15_000 });
+  await locator.evaluate((el) => {
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  });
 }
 
 async function waitReady(page: Page): Promise<void> {
@@ -35,14 +42,21 @@ export async function openRecordedGoodsDetail(
 }
 
 export async function openCourseCatalogTab(page: Page): Promise<void> {
-  const catalogTab = page.getByRole('tab', { name: '课程目录' });
-  await expect(catalogTab, '录播课详情应展示课程目录 Tab').toBeVisible();
+  // 课程目录是详情页滚动锚点（不在 Tab 面板里），首屏以下会被 overflow 裁切。
+  // getByRole 默认跳过裁切节点，需 includeHidden 再滚入可视区。
+  const catalogTab = page.getByRole('tab', { name: '课程目录', includeHidden: true });
+  await expect(catalogTab, '录播课详情应展示课程目录').toBeAttached({ timeout: 15_000 });
+  await scrollSectionIntoView(catalogTab);
   await catalogTab.click();
-  await expect(page.getByText('可试看').first(), '目录应标记可试看活动').toBeVisible();
+
+  const previewable = page.locator('button').filter({ hasText: '可试看' }).first();
+  await scrollSectionIntoView(previewable);
+  await expect(previewable, '目录应标记可试看活动').toBeVisible();
 }
 
 export async function openCatalogActivity(page: Page, title: string): Promise<void> {
-  const activity = page.getByRole('button', { name: new RegExp(escapeRegExp(title)) });
+  const activity = page.locator('button').filter({ hasText: title }).first();
+  await scrollSectionIntoView(activity);
   await expect(activity, `目录应展示活动「${title}」`).toBeVisible();
   await activity.click();
 }
