@@ -11,7 +11,6 @@ import {
   futureLocalDate,
   pickNumber,
   cleanupRefundMerchantOrder,
-  provisionPublishedFixedGoods,
   provisionPublishedRecordedGoods,
   provisionStudentAppointmentOrderItem,
   provisionTeacherAvailableSlots,
@@ -477,39 +476,6 @@ export async function prepareBookableAppointment(): Promise<BookableAppointmentO
   };
 }
 
-export interface CatalogSearchGoods {
-  goodsId: number;
-  goodsName: string;
-  cleanup: () => Promise<void>;
-}
-
-/**
- * 上架一门零元固定课，给商品搜索/详情/购买弹层共用。
- * 调用方负责 afterAll 统一 cleanup，避免并行用例先删后搜。
- */
-export async function prepareCatalogSearchGoods(): Promise<CatalogSearchGoods | null> {
-  if (!configEnv.shopId || !accounts.token) return null;
-
-  const data = new DataRegistry();
-  const { merchant } = createShopApis();
-  const goods = await provisionPublishedFixedGoods(merchant, {
-    shopId: configEnv.shopId,
-    data,
-    price: 0,
-    namePrefix: 'UI商品搜索',
-  });
-  if (!goods) {
-    await data.runAll();
-    return null;
-  }
-
-  return {
-    goodsId: goods.goodsId,
-    goodsName: goods.title || `UI商品搜索 ${goods.goodsId}`,
-    cleanup: () => data.runAll(),
-  };
-}
-
 export interface PurchasableRecordedCourse {
   goodsId: number;
   goodsName: string;
@@ -519,6 +485,7 @@ export interface PurchasableRecordedCourse {
 
 /**
  * 上架零元可试看录播课（data 目录视频+资料，转码成功后才返回）。
+ * 给商品搜索/购买弹层/录播试看共用；调用方 afterAll 统一 cleanup。
  * 下单仍走 H5 UI，成功后用 attachPaidOrder 登记退款。
  */
 export async function preparePurchasableRecordedCourse(): Promise<PurchasableRecordedCourse | null> {
