@@ -32,6 +32,9 @@ export async function openRecordedGoodsDetail(
   await waitReady(page);
   await expect(page.getByPlaceholder('搜索商品名称'), '搜索页应展示商品搜索框').toBeVisible();
 
+  await expect(page.locator('#root'), '搜索页应展示搜索结果摘要').toContainText(
+    `与“${goods.name}”相关的商品`,
+  );
   const goodsCard = page.getByRole('button', { name: new RegExp(escapeRegExp(goods.name)) });
   await expect(goodsCard, '搜索结果应包含刚上架的录播课').toBeVisible();
   await goodsCard.click();
@@ -42,20 +45,15 @@ export async function openRecordedGoodsDetail(
 }
 
 export async function openCourseCatalogTab(page: Page): Promise<void> {
-  // 课程目录是详情页滚动锚点（不在 Tab 面板里），首屏以下会被 overflow 裁切。
-  // getByRole 默认跳过裁切节点，需 includeHidden 再滚入可视区。
-  const catalogTab = page.getByRole('tab', { name: '课程目录', includeHidden: true });
-  await expect(catalogTab, '录播课详情应展示课程目录').toBeAttached({ timeout: 15_000 });
-  await scrollSectionIntoView(catalogTab);
-  await catalogTab.click();
-
-  const previewable = page.locator('button').filter({ hasText: '可试看' }).first();
-  await scrollSectionIntoView(previewable);
-  await expect(previewable, '目录应标记可试看活动').toBeVisible();
+  // 详情 Tab 文案是「目录」，区块标题才是「课程目录」，二者都在商品页上。
+  const catalogHeading = page.getByText('课程目录', { exact: true });
+  await scrollSectionIntoView(catalogHeading);
+  await expect(catalogHeading, '录播课详情应展示课程目录').toBeVisible();
+  await expect(page.getByText('试听').first(), '目录应标记可试看活动').toBeVisible();
 }
 
 export async function openCatalogActivity(page: Page, title: string): Promise<void> {
-  const activity = page.locator('button').filter({ hasText: title }).first();
+  const activity = page.getByRole('button', { name: new RegExp(escapeRegExp(title)) });
   await scrollSectionIntoView(activity);
   await expect(activity, `目录应展示活动「${title}」`).toBeVisible();
   await activity.click();
