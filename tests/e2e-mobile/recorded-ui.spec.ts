@@ -40,19 +40,14 @@ test.describe('H5 录播课购买与观看', () => {
         name: prepared!.goodsName,
       });
       await openCourseCatalogTab(page);
-      await expect(
-        page.getByRole('button', { name: new RegExp(RECORDED_VIDEO_ACTIVITY_TITLE) }),
-        '目录应展示可试看视频活动',
-      ).toBeVisible();
-      await expect(
-        page.getByRole('button', { name: new RegExp(RECORDED_DOC_ACTIVITY_TITLE) }),
-        '目录应展示可试看资料活动',
-      ).toBeVisible();
-      await expect(page.getByText('可试看').first(), '目录活动应标记可试看').toBeVisible();
-      await expect(
-        page.getByRole('button', { name: new RegExp(RECORDED_VIDEO_ACTIVITY_TITLE) }).getByText(/\d{2}:\d{2}/),
-        '可试看视频应展示时长',
-      ).toBeVisible();
+      const videoActivity = page.locator('button').filter({ hasText: RECORDED_VIDEO_ACTIVITY_TITLE });
+      const docActivity = page.locator('button').filter({ hasText: RECORDED_DOC_ACTIVITY_TITLE });
+      await expect(videoActivity, '目录应展示可试看视频活动').toBeVisible();
+      await expect(videoActivity.getByText('可试看'), '目录视频应标记可试看').toBeVisible();
+      await expect(videoActivity.getByText(/\d{2}:\d{2}/), '可试看视频应展示时长').toBeVisible();
+      await expect(docActivity, '目录应包含可试看资料活动').toBeAttached();
+      await docActivity.evaluate((el) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
+      await expect(docActivity, '目录应展示可试看资料活动').toBeVisible();
       await expect(
         page.getByText('购买后查看'),
         '本场景两个活动均可试看，目录不应出现购买后查看锁',
