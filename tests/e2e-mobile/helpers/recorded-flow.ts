@@ -93,8 +93,9 @@ export async function playRecordedVideo(page: Page): Promise<void> {
   await expect(page.getByText('视频转码中，请稍后再试'), '进入播放页后转码应结束').toBeHidden({
     timeout: 60_000,
   });
-  const playButton = page.getByRole('button', { name: '播放视频' });
-  const pauseButton = page.getByRole('button', { name: '暂停视频' });
+  // 暂停时中央大按钮和底栏按钮都叫「播放视频」，严格模式会命中两个。
+  const playButton = page.getByRole('button', { name: '播放视频' }).first();
+  const pauseButton = page.getByRole('button', { name: '暂停视频' }).first();
   if (await pauseButton.isVisible().catch(() => false)) {
     return;
   }
