@@ -249,6 +249,45 @@ test.describe('商家端·课表总览', () => {
     expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
   });
 
+  test('GET /appointment/classin-room-settings-echo 缺少必填参数应失败', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentClassinRoomSettingsEcho(env.shopId)}`;
+    const { status, body } = await api.get(
+      Endpoints.shopAdmin.appointmentClassinRoomSettingsEcho(env.shopId),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-排课ClassIn设置回显-缺少必填.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['缺少 teacher_id/order_item_id/start_unix 应返回非成功业务码'],
+    });
+
+    expect(body.code, '缺少必填参数应返回非成功业务码').not.toBe(SUCCESS_CODE);
+  });
+
+  test('GET /appointment/classin-room-settings-echo 携带参数返回回显结构', async ({ api, env }) => {
+    const startUnix = Math.floor(Date.now() / 1000) + 86400;
+    const query = { teacher_id: 999999999, order_item_id: 999999999, start_unix: startUnix };
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentClassinRoomSettingsEcho(env.shopId)}?teacher_id=${query.teacher_id}&order_item_id=${query.order_item_id}&start_unix=${startUnix}`;
+    const { status, body } = await api.get<{ found?: boolean }>(
+      Endpoints.shopAdmin.appointmentClassinRoomSettingsEcho(env.shopId),
+      { query },
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-排课ClassIn设置回显.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', '应包含 found 布尔字段'],
+    });
+
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(typeof body.data?.found, 'found 应为布尔值').toBe('boolean');
+  });
+
   test('POST /appointment/create 缺少必填字段应失败', async ({ api, env }) => {
     const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentCreate(env.shopId)}`;
     const { status, body } = await api.post(Endpoints.shopAdmin.appointmentCreate(env.shopId), {});
@@ -413,6 +452,53 @@ test.describe('商家端·约课学员管理', () => {
     });
 
     expect(body.code, '备注不存在学员应返回非成功业务码').not.toBe(SUCCESS_CODE);
+  });
+
+  test('GET /appointment/booking-students/:userId/adjust-logs 返回约课学员调整记录', async ({
+    api,
+    env,
+  }) => {
+    const missingUrl = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentBookingStudentAdjustLogs(env.shopId, 999999999)}`;
+    const { status: missingStatus, body: missingBody } = await api.get(
+      Endpoints.shopAdmin.appointmentBookingStudentAdjustLogs(env.shopId, 999999999),
+    );
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-约课学员调整记录-不存在.json',
+      request: { method: 'GET', url: missingUrl, headers: {}, body: null },
+      response: { status: missingStatus, headers: {}, body: missingBody },
+      assertions: ['不存在约课学员应返回非成功业务码'],
+    });
+    expect(missingBody.code, '不存在约课学员应返回非成功业务码').not.toBe(SUCCESS_CODE);
+
+    const { body: listBody } = await api.get<{
+      list?: Array<{ student_user_id?: number; studentUserId?: number; userId?: number; id?: number }>;
+    }>(Endpoints.shopAdmin.appointmentBookingStudents(env.shopId), {
+      query: { page: 1, limit: 1 },
+    });
+    expect(listBody.code, '获取约课学员列表应成功').toBe(SUCCESS_CODE);
+    const first = listBody.data?.list?.[0];
+    const studentUserId = Number(
+      first?.student_user_id ?? first?.studentUserId ?? first?.userId ?? first?.id ?? 0,
+    );
+    if (studentUserId <= 0) return;
+
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentBookingStudentAdjustLogs(env.shopId, studentUserId)}?page=1&page_size=10`;
+    const { status, body } = await api.get(
+      Endpoints.shopAdmin.appointmentBookingStudentAdjustLogs(env.shopId, studentUserId),
+      { query: { page: 1, page_size: 10 } },
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-约课学员调整记录.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码'],
+    });
+
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
   });
 });
 
@@ -630,6 +716,44 @@ test.describe('商家端·改约审批', () => {
 
 test.describe('商家端·老师管理', () => {
   test.skip(({ env }) => !env.shopId, '未配置 SHOP_ID，跳过老师管理用例');
+
+  test('GET /appointment/teacher-entry/share 返回教师端入口分享链接与二维码', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentTeacherEntryShare(env.shopId)}`;
+    const { status, body } = await api.get(
+      Endpoints.shopAdmin.appointmentTeacherEntryShare(env.shopId),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-老师入口分享信息.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', '分享数据应存在'],
+    });
+
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(body.data, '教师端入口分享信息应存在').toBeTruthy();
+  });
+
+  test('GET /appointment/product-options 返回可教商品选项列表', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentProductOptions(env.shopId)}`;
+    const { status, body } = await api.get<{ list?: unknown[] }>(
+      Endpoints.shopAdmin.appointmentProductOptions(env.shopId),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-老师可教商品选项.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', 'list 应为数组'],
+    });
+
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(Array.isArray(body.data?.list ?? []), '可教商品选项应为数组').toBe(true);
+  });
 
   test('GET /appointment/teacher-manage 返回老师管理列表', async ({ api, env }) => {
     const url = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentTeacherManageList(env.shopId)}?page=1&limit=20`;

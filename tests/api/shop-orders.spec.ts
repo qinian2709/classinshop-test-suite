@@ -103,6 +103,77 @@ test.describe('商家后台订单管理', () => {
     expect(body.code, '访问无权限店铺应返回非成功业务码').not.toBe(SUCCESS_CODE);
   });
 
+  test('GET /orders/spec-filter-options 返回授课订单规格筛选项', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.ordersSpecFilterOptions(env.shopId)}`;
+    const { status, body } = await api.get<{ groups?: unknown[] }>(
+      Endpoints.shopAdmin.ordersSpecFilterOptions(env.shopId),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-商家订单规格筛选项.json',
+      request: { method: 'GET', url, headers: {}, body: null },
+      response: { status, headers: {}, body },
+      assertions: ['HTTP 状态码应为 200', '业务 code 应为成功码', 'groups 应为数组'],
+    });
+
+    expect(status, 'HTTP 状态码应为 200').toBe(200);
+    expect(body.code, '业务 code 应为成功码').toBe(SUCCESS_CODE);
+    expect(Array.isArray(body.data?.groups ?? []), '规格筛选项 groups 应为数组').toBe(true);
+  });
+
+  test('POST /orders/tracking/import 空列表导入快递单号应失败', async ({ api, env }) => {
+    const url = `${env.apiBaseURL}${Endpoints.shopAdmin.ordersTrackingImport(env.shopId)}`;
+    const { status, body } = await api.post(
+      Endpoints.shopAdmin.ordersTrackingImport(env.shopId),
+      {},
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-批量导入快递单号-缺少参数.json',
+      request: { method: 'POST', url, headers: {}, body: {} },
+      response: { status, headers: {}, body },
+      assertions: ['缺少 items 应返回非成功业务码'],
+    });
+
+    expect(body.code, '缺少 items 应返回非成功业务码').not.toBe(SUCCESS_CODE);
+  });
+
+  test('GET /orders/:orderItemId/appointment/adjust-logs 与 active-freeze 校验', async ({
+    api,
+    env,
+  }) => {
+    const logsUrl = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentOrderAdjustLogs(env.shopId, 999999999)}`;
+    const { status: logsStatus, body: logsBody } = await api.get(
+      Endpoints.shopAdmin.appointmentOrderAdjustLogs(env.shopId, 999999999),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-订单约课调整记录-不存在订单项.json',
+      request: { method: 'GET', url: logsUrl, headers: {}, body: null },
+      response: { status: logsStatus, headers: {}, body: logsBody },
+      assertions: ['HTTP 状态码应为 200', '应返回业务 code'],
+    });
+    expect(logsStatus, 'HTTP 状态码应为 200').toBe(200);
+    expect(typeof logsBody.code, '业务 code 应为数字').toBe('number');
+
+    const freezeUrl = `${env.apiBaseURL}${Endpoints.shopAdmin.appointmentOrderActiveFreeze(env.shopId, 999999999)}`;
+    const { status: freezeStatus, body: freezeBody } = await api.get(
+      Endpoints.shopAdmin.appointmentOrderActiveFreeze(env.shopId, 999999999),
+    );
+
+    await attachApiCallLog({
+      testInfo: test.info(),
+      name: '请求日志-订单有效冻结信息-不存在订单项.json',
+      request: { method: 'GET', url: freezeUrl, headers: {}, body: null },
+      response: { status: freezeStatus, headers: {}, body: freezeBody },
+      assertions: ['不存在订单项查询有效冻结应返回非成功业务码'],
+    });
+    expect(freezeBody.code, '不存在订单项查询有效冻结应失败').not.toBe(SUCCESS_CODE);
+  });
+
   // ── 快递单号 ──────────────────────────────────────────────────────────
 
   test('POST /orders/:id/tracking 缺少 trackingNumber 应失败', async ({ api, env }) => {

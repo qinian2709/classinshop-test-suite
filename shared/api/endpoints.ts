@@ -64,6 +64,8 @@ export const Endpoints = {
     appointmentOrderSlots: (orderItemId: string | number) =>
       `/shop/appointment/order/${orderItemId}/slots`,
     appointmentTeacherProfile: (teacherId: string | number) => `/shop/appointment/teacher/${teacherId}`,
+    appointmentTeacherSlots: (teacherId: string | number) =>
+      `/shop/appointment/teacher/${teacherId}/slots`,
     appointmentCheck: '/shop/appointment/check',
     appointmentBook: '/shop/appointment/book',
     appointmentMy: '/shop/appointment/my',
@@ -72,6 +74,24 @@ export const Endpoints = {
     appointmentMyChange: (id: string | number) => `/shop/appointment/my/${id}/change`,
     // 学员学习列表
     learnList: '/shop/user/learn-list',
+    // 录播课 C 端（私域试看 / 购后学习 / 文档预览 / 文件下载）
+    recordedActivityDetail: (activityId: string | number) =>
+      `/shop/recorded/activity/${activityId}/detail`,
+    recordedDocImage: '/shop/recorded/course/doc-image',
+    recordedDocWebOffice: '/shop/recorded/course/doc-weboffice',
+    recordedDocWebOfficeToken: '/shop/recorded/course/doc-weboffice-token',
+    recordedLearnHome: (orderItemId: string | number) => `/shop/recorded/${orderItemId}/home`,
+    recordedStudyData: (orderItemId: string | number) => `/shop/recorded/${orderItemId}/study-data`,
+    recordedStudyReport: '/shop/recorded/study/report',
+    recordedActivityAccess: (orderItemId: string | number, activityId: string | number) =>
+      `/shop/recorded/${orderItemId}/activities/${activityId}/access`,
+    recordedFileDownloadSign: (orderItemId: string | number, fileId: string | number) =>
+      `/shop/recorded/${orderItemId}/files/${fileId}/download-sign`,
+    recordedFileStream: (
+      orderItemId: string | number,
+      activityId: string | number,
+      fileId: string | number,
+    ) => `/shop/recorded/${orderItemId}/activities/${activityId}/files/${fileId}/stream`,
     // 有价优惠券 C 端
     paidCouponLanding: (goodsId: string | number) => `/shop/paid-coupon/${goodsId}`,
   },
@@ -83,6 +103,8 @@ export const Endpoints = {
   },
   goods: {
     detail: (id: string | number) => `/goods/${id}`,
+    activityPreview: (productId: string | number, activityId: string | number) =>
+      `/goods/product/${productId}/course/activities/${activityId}/preview`,
     orderCreate: '/goods/order/create',
     orderCalculate: '/goods/order/calculate',
   },
@@ -120,10 +142,13 @@ export const Endpoints = {
     courseVideoTranscode: (shopId: string | number) => `/shop/${shopId}/course/video/transcode`,
     courseVideoTranscodeStatus: (shopId: string | number) =>
       `/shop/${shopId}/course/video/transcode-status`,
+    storageCapacity: (shopId: string | number) => `/shop/${shopId}/storage/capacity`,
     attributeCreate: (shopId: string | number) => `/shop/${shopId}/goods/attribute/create`,
     attributeList: (shopId: string | number) => `/shop/${shopId}/goods/attribute/list`,
     // 约课老师
     appointmentTeachers: (shopId: string | number) => `/shop/${shopId}/appointment/teachers`,
+    appointmentTeacherEntryShare: (shopId: string | number) =>
+      `/shop/${shopId}/appointment/teacher-entry/share`,
     appointmentTeacherManageList: (shopId: string | number) =>
       `/shop/${shopId}/appointment/teacher-manage`,
     appointmentTeacherManageDetail: (shopId: string | number, teacherId: string | number) =>
@@ -144,6 +169,8 @@ export const Endpoints = {
       `/shop/${shopId}/appointment/creatable-orders`,
     appointmentOrderTeachers: (shopId: string | number) =>
       `/shop/${shopId}/appointment/order-teachers`,
+    appointmentClassinRoomSettingsEcho: (shopId: string | number) =>
+      `/shop/${shopId}/appointment/classin-room-settings-echo`,
     appointmentProductOptions: (shopId: string | number) =>
       `/shop/${shopId}/appointment/product-options`,
     appointmentStudents: (shopId: string | number) => `/shop/${shopId}/appointment/students`,
@@ -261,6 +288,10 @@ export const Endpoints = {
       `/shop/${shopId}/users/students/${userId}/name`,
     // 订单管理
     ordersList: (shopId: string | number) => `/shop/${shopId}/orders`,
+    ordersSpecFilterOptions: (shopId: string | number) =>
+      `/shop/${shopId}/orders/spec-filter-options`,
+    ordersTrackingExport: (shopId: string | number) => `/shop/${shopId}/orders/tracking/export`,
+    ordersTrackingImport: (shopId: string | number) => `/shop/${shopId}/orders/tracking/import`,
     orderTracking: (shopId: string | number, orderId: string | number) =>
       `/shop/${shopId}/orders/${orderId}/tracking`,
     // 商家退款（直接退款；POST 同路径发起退款）
@@ -296,6 +327,31 @@ export const Endpoints = {
     analyticsUserPayDistribution: (shopId: string | number) =>
       `/shop/${shopId}/analytics/users/pay-distribution`,
     analyticsReport: (shopId: string | number) => `/shop/${shopId}/analytics/report`,
+    // 约课分析
+    analyticsBookingOverview: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/booking/overview`,
+    analyticsBookingTrend: (shopId: string | number) => `/shop/${shopId}/analytics/booking/trend`,
+    analyticsBookingTeacherSlotRank: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/booking/teacher-slot-rank`,
+    analyticsBookingGoodsPerformance: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/booking/goods-performance`,
+    analyticsBookingHeatmap: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/booking/heatmap`,
+    analyticsBookingExport: (shopId: string | number) => `/shop/${shopId}/analytics/booking/export`,
+    // 录播商品分析 & 资源用量
+    analyticsRecordedOverview: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/recorded/overview`,
+    analyticsRecordedGoods: (shopId: string | number) => `/shop/${shopId}/analytics/recorded/goods`,
+    analyticsResourceUsageOverview: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/resource-usage/overview`,
+    analyticsResourceUsageProducts: (shopId: string | number) =>
+      `/shop/${shopId}/analytics/resource-usage/products`,
+    recordedAnalyticsSummary: (shopId: string | number, goodsId: string | number) =>
+      `/shop/${shopId}/recorded/${goodsId}/analytics/summary`,
+    recordedAnalyticsStudents: (shopId: string | number, goodsId: string | number) =>
+      `/shop/${shopId}/recorded/${goodsId}/analytics/students`,
+    recordedAnalyticsActivities: (shopId: string | number, goodsId: string | number) =>
+      `/shop/${shopId}/recorded/${goodsId}/analytics/activities`,
     // 概况页
     overviewOperation: (shopId: string | number) => `/shop/${shopId}/overview/operation`,
     overviewTodo: (shopId: string | number) => `/shop/${shopId}/overview/todo`,
