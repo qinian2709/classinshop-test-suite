@@ -104,7 +104,9 @@ export async function playRecordedVideo(page: Page): Promise<void> {
   await expect(pauseButton, '点击播放后视频应进入播放中').toBeVisible({ timeout: 20_000 });
 }
 
-export async function payZeroYuanFromPopup(page: Page): Promise<number> {
+export async function submitZeroYuanCheckout(
+  page: Page,
+): Promise<{ orderId: number; orderItemId: number }> {
   const payButton = page.getByRole('button', { name: /^立即支付/ });
   await expect(payButton, '购买弹层应展示立即支付').toBeVisible();
   const agree = page.getByRole('checkbox');
@@ -131,8 +133,55 @@ export async function payZeroYuanFromPopup(page: Page): Promise<number> {
       `零元下单失败 code=${body.code ?? 'nil'} orderId=${orderId} orderItemId=${orderItemId}`,
     );
   }
+  return { orderId, orderItemId };
+}
+
+export async function payZeroYuanFromPopup(page: Page): Promise<number> {
+  const { orderId, orderItemId } = await submitZeroYuanCheckout(page);
   await page.goto(`/recorded/${orderItemId}`, { waitUntil: 'domcontentloaded' });
   return orderId;
+}
+
+export async function openPurchasedRecordedFromLearn(
+  page: Page,
+  testInfo: TestInfo,
+  goodsName: string,
+): Promise<void> {
+  await page.goto('/learn', { waitUntil: 'domcontentloaded' });
+  await waitReady(page);
+  await page.getByRole('button', { name: /^录播课/ }).click();
+  const search = page.getByPlaceholder(/搜索课程名/);
+  await expect(search, '学习页应展示课程搜索框').toBeVisible();
+  await search.fill(goodsName);
+  await page.waitForTimeout(800);
+
+  const startButton = page.getByText(/开始学习|继续学习/).first();
+  await expect(startButton, '学习列表应展示刚购买录播课的开始/继续学习').toBeVisible();
+  await attachStepScreenshot(page, testInfo, '01-学习页已找到已购录播课');
+  await startButton.click();
+}
+
+export async function openStudyDataFromHome(page: Page): Promise<void> {
+  const studyData = page.getByText(/学习数据/);
+  await expect(studyData, '学习首页应展示学习数据入口').toBeVisible();
+  await studyData.click();
+}
+
+export async function applyZeroYuanRefundFromOrderDetail(page: Page): Promise<void> {
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const applyButton = page.getByRole('button', { name: '申请退款' });
+  await expect(applyButton, '已支付订单详情应展示申请退款').toBeVisible({ timeout: 15_000 });
+  await applyButton.click();
+  await expect(page.getByText('申请退款').last(), '应打开申请退款弹层').toBeVisible();
+  await expect(
+    page.getByText(/本单实付 0 元/),
+    '零元单退款弹层应提示无现金原路退回',
+  ).toBeVisible();
+  await page.getByPlaceholder('必填').fill('UI自动化退款申请');
+  await page.getByRole('button', { name: '提交申请' }).click();
+  await expect(page.getByText(/提交成功|商家处理中|退款申请/), '提交后退款申请应有反馈').toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 export async function assertPaidLearnHome(page: Page, goodsName: string): Promise<void> {

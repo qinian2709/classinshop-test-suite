@@ -10,7 +10,9 @@ import {
   buildAddressPayload,
   futureLocalDate,
   pickNumber,
+  buildCreateOrderPayload,
   cleanupRefundMerchantOrder,
+  provisionPublishedFixedGoods,
   provisionPublishedRecordedGoods,
   provisionStudentAppointmentOrderItem,
   provisionTeacherAvailableSlots,
@@ -513,6 +515,200 @@ export async function preparePurchasableRecordedCourse(): Promise<PurchasableRec
         await cleanupRefundMerchantOrder(merchant, configEnv.shopId!, orderId, 0);
       });
     },
+    cleanup: () => data.runAll(),
+  };
+}
+
+export interface PurchasedRecordedCourse {
+  goodsId: number;
+  goodsName: string;
+  orderId: number;
+  orderItemId: number;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * 上架零元录播课并由 C 端 API 下单，给学习页进课 / 学习数据 / 订单退款 UI 复用。
+ */
+export async function preparePurchasedRecordedCourse(): Promise<PurchasedRecordedCourse | null> {
+  if (!configEnv.shopId || !accounts.token || !accounts.mobileToken) return null;
+
+  const data = new DataRegistry();
+  const { merchant, student } = createShopApis();
+  const goods = await provisionPublishedRecordedGoods(merchant, {
+    shopId: configEnv.shopId,
+    data,
+    price: 0,
+    namePrefix: 'UI录播学',
+  });
+  if (!goods) {
+    await data.runAll();
+    return null;
+  }
+
+  const created = await student.post(Endpoints.goods.orderCreate, buildCreateOrderPayload({
+    goodsId: goods.goodsId,
+    skuId: goods.skuId,
+  }), { maxDurationMs: 0 });
+  const orderItemId = pickNumber(created.body.data, ['orderItemId', 'order_item_id']) ?? 0;
+  const orderId = pickNumber(created.body.data, ['orderId', 'order_id', 'id']) ?? 0;
+  if (created.body.code !== SUCCESS_CODE || orderItemId <= 0 || orderId <= 0) {
+    await data.runAll();
+    return null;
+  }
+
+  data.register(`退款录播课订单 ${orderId}`, async () => {
+    await cleanupRefundMerchantOrder(merchant, configEnv.shopId!, orderId, 0);
+  });
+
+  return {
+    goodsId: goods.goodsId,
+    goodsName: goods.title,
+    orderId,
+    orderItemId,
+    cleanup: () => data.runAll(),
+  };
+}
+
+export interface PurchasableFixedCourse {
+  goodsId: number;
+  goodsName: string;
+  attachPaidOrder: (orderId: number) => void;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * 上架零元固定课（绑定 ClassIn 班级），下单仍走 H5 UI。
+ */
+export async function preparePurchasableFixedCourse(): Promise<PurchasableFixedCourse | null> {
+  if (!configEnv.shopId || !accounts.token || !accounts.mobileToken) return null;
+
+  const data = new DataRegistry();
+  const { merchant } = createShopApis();
+  const goods = await provisionPublishedFixedGoods(merchant, {
+    shopId: configEnv.shopId,
+    data,
+    price: 0,
+    namePrefix: 'UI固定课',
+  });
+  if (!goods) {
+    await data.runAll();
+    return null;
+  }
+
+  return {
+    goodsId: goods.goodsId,
+    goodsName: goods.title,
+    attachPaidOrder: (orderId) => {
+      if (!orderId) return;
+      data.register(`退款固定课订单 ${orderId}`, async () => {
+        await cleanupRefundMerchantOrder(merchant, configEnv.shopId!, orderId, 0);
+      });
+    },
+    cleanup: () => data.runAll(),
+  };
+}
+
+export interface RefundableCouponOrder {
+  goodsName: string;
+  orderId: number;
+  orderItemId: number;
+  cleanup: () => Promise<void>;
+}
+
+/**
+ * 上架 1 元固定课 + 1 元无门槛券，领取后带券下单，实付 0 元但详情仍展示申请退款。
+ */
+export async function prepareRefundableCouponOrder(): Promise<RefundableCouponOrder | null> {
+  if (!configEnv.shopId || !accounts.token || !accounts.mobileToken) return null;
+
+  const data = new DataRegistry();
+  const { merchant, student } = createShopApis();
+  const goods = await provisionPublishedFixedGoods(merchant, {
+    shopId: configEnv.shopId,
+    data,
+    price: 1,
+    namePrefix: 'UI退款课',
+  });
+  if (!goods) {
+    await data.runAll();
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  const createdCoupon = await merchant.post<{ id: number }>(
+    Endpoints.shopAdmin.couponCreate(configEnv.shopId),
+    {
+      name: uniqueUiName('UI退款券'),
+      type: 1,
+      discountAmount: 1,
+      thresholdAmount: 0,
+      discountRate: 0,
+      stockTotal: 1,
+      receiveLimitPerUser: 1,
+      startTime: now - 60,
+      endTime: now + 60 * 60 * 24,
+      productIds: [],
+    },
+    { maxDurationMs: 0 },
+  );
+  const couponId = createdCoupon.body.data?.id ?? 0;
+  if (createdCoupon.body.code !== SUCCESS_CODE || couponId <= 0) {
+    await data.runAll();
+    return null;
+  }
+  data.register(`停用退款测试券 ${couponId}`, async () => {
+    await merchant.post(
+      Endpoints.shopAdmin.couponStatus(configEnv.shopId!),
+      { id: couponId, status: 1 },
+      { maxDurationMs: 0 },
+    );
+  });
+
+  const received = await student.post<{ userCouponId?: number; couponCodeId?: number }>(
+    Endpoints.shop.receiveCoupon(couponId),
+    {},
+    { maxDurationMs: 0 },
+  );
+  const userCouponId = pickNumber(received.body.data ?? {}, ['userCouponId', 'user_coupon_id', 'id']) ?? 0;
+  const couponCodeId = pickNumber(received.body.data ?? {}, ['couponCodeId', 'coupon_code_id']) ?? 0;
+  if (received.body.code !== SUCCESS_CODE || userCouponId <= 0) {
+    await data.runAll();
+    return null;
+  }
+  if (couponCodeId > 0) {
+    data.register(`作废退款测试券码 ${couponCodeId}`, async () => {
+      await merchant.post(
+        Endpoints.shopAdmin.couponCodeVoid(configEnv.shopId!),
+        { codeId: couponCodeId, voidReason: 'H5 UI 退款测试清理' },
+        { maxDurationMs: 0 },
+      );
+    });
+  }
+
+  const createdOrder = await student.post(
+    Endpoints.goods.orderCreate,
+    buildCreateOrderPayload({
+      goodsId: goods.goodsId,
+      skuId: goods.skuId,
+      userCouponId,
+    }),
+    { maxDurationMs: 0 },
+  );
+  const orderItemId = pickNumber(createdOrder.body.data, ['orderItemId', 'order_item_id']) ?? 0;
+  const orderId = pickNumber(createdOrder.body.data, ['orderId', 'order_id', 'id']) ?? 0;
+  if (createdOrder.body.code !== SUCCESS_CODE || orderItemId <= 0 || orderId <= 0) {
+    await data.runAll();
+    return null;
+  }
+  data.register(`退款清理带券订单 ${orderId}`, async () => {
+    await cleanupRefundMerchantOrder(merchant, configEnv.shopId!, orderId, 0);
+  });
+
+  return {
+    goodsName: goods.title,
+    orderId,
+    orderItemId,
     cleanup: () => data.runAll(),
   };
 }
